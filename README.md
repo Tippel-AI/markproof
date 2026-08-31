@@ -30,7 +30,7 @@ Content marking is not a setting you switch on. It is a property that has to sur
 
 All three fail **silently**. Nothing crashes, no test goes red, no log line warns you. You find out when someone from outside asks — an auditor, a regulator, a journalist.
 
-If you want a sense of how fragile these marks are in the wild, look at where the attention went. Tools that *remove* C2PA manifests and text watermarks have collected well over 30,000 GitHub stars; the official C2PA reference implementation has about 410. Marks get stripped deliberately, and far more often by accident.
+If you want a sense of how fragile these marks are in the wild, look at where the attention went. On **31 August 2026**, two of the most-starred tools whose stated purpose is stripping AI watermarks and provenance metadata — [watermarks-remover](https://github.com/guillaumemeyer/watermarks-remover) and [remove-ai-watermarks](https://github.com/wiltodelta/remove-ai-watermarks) — held about **19,600** and **5,300** GitHub stars; the first collected them in its first three weeks. The official C2PA reference implementation, [c2pa-rs](https://github.com/contentauth/c2pa-rs), held **410**. Star counts move, so check them rather than trust this line. Marks get stripped deliberately, and far more often by accident.
 
 There is also a paperwork problem. Even a team doing everything right cannot currently *show* it. Asked "how do you know your images shipped with their manifests?", the honest answer today is a config file and a vendor's word. markproof turns that into a measurement with a timestamp and a signature.
 
@@ -79,7 +79,7 @@ $ markproof run --config markproof.yaml
   support-bot prod · rulepack art50-eu-2026.07 (1.0.0)
 
   Rule       Result  Probe   Detail
-  MPF-D-001  PASS    chat    disclosure found (1 pattern matched: en-08-speaking-with-ai)
+  MPF-D-001  PASS    chat    disclosure found (1 pattern matched: en-08-talking-to-ai)
   MPF-D-003  PASS    chat    disclosure found (2 patterns matched: …)
   MPF-M-001  FAIL    images  1 of 1 asset(s) failed: no C2PA manifest embedded
   MPF-T-001  PASS    chat    watermark detected (mean g 0.7498, 521 tokens)
@@ -136,19 +136,21 @@ markproof is not the only tool in this space, and for several jobs it isn't the 
 
 ## Regulatory context
 
-Article 50 of the EU AI Act has applied since **2 August 2026**. Systems already on the market have until **2 December 2026** to retrofit machine-readable marking under Art. 50(2). The Digital Omnibus (Reg. (EU) 2026/1744) postponed the Annex III high-risk obligations to December 2027 and August 2028 — it did **not** touch Article 50.
+Article 50 of the EU AI Act has applied since **2 August 2026**. The Digital Omnibus on AI — [Regulation (EU) 2026/1744](http://data.europa.eu/eli/reg/2026/1744/oj) of 8 July 2026, in force since 27 July 2026 — postponed the high-risk obligations for Annex III systems to **2 December 2027** and those for AI inside regulated products to **2 August 2028**. It did not relax the Article 50 transparency duties themselves; the one date it moved there is the transition for systems already on the market before 2 August 2026, which have until **2 December 2026** to retrofit machine-readable marking under Art. 50(2). (Reference checked against EUR-Lex on 31 August 2026. What the dates mean for your system is a question for a lawyer, not for this README.)
 
 Rulepacks are derived from the Commission's Article 50 guidelines (20 July 2026) and the Code of Practice on Transparency. They are versioned, cite the clause they implement, and are published under CC-BY-4.0 so you can reuse them outside this tool.
 
 ## Disclaimer
 
-markproof is not affiliated with, endorsed by, or sponsored by Google DeepMind (SynthID), Adobe or the Content Authenticity Initiative (C2PA), or the European Commission. All trademarks belong to their respective owners.
+markproof is not affiliated with, endorsed by, or sponsored by Google DeepMind (SynthID), Adobe / the Content Authenticity Initiative (C2PA), or the European Commission. All trademarks are the property of their respective owners.
 
-markproof performs technical conformance testing. It is **not legal advice** and produces no certification. A passing report is evidence that specific checks passed at a specific time — nothing more.
+markproof performs technical conformance testing. It is not legal advice and produces no certification. A passing report is evidence that specific checks passed at a specific time — nothing more.
+
+Where the tool stops is written out in full — every scope limit, stated on purpose — in [`docs/DISCLAIMER.md`](docs/DISCLAIMER.md).
 
 ## Licence
 
-Code is Apache-2.0. Rulepacks, patterns, and documentation are CC-BY-4.0 (they derive from CC-BY-licensed Commission material). See [`LICENSE`](LICENSE), [`LICENSE-DATA`](LICENSE-DATA), and [`NOTICE`](NOTICE).
+Code is Apache-2.0. Rulepacks, patterns, prompt sets, and documentation are CC-BY-4.0 (they derive from CC-BY-licensed Commission material). See [`LICENSE`](LICENSE), [`LICENSE-DATA`](LICENSE-DATA), and [`NOTICE`](NOTICE).
 
 ---
 

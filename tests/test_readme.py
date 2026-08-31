@@ -110,6 +110,44 @@ class TestClaims:
             assert project in text, f"{project} is no longer mentioned"
 
 
+class TestDisclaimerWording:
+    """One wording, four places.
+
+    ``docs/DISCLAIMER.md`` claims the two paragraphs stand word for word in the
+    README and that the trademark one is the string the PDFs print. That claim
+    used to be false in three small ways — an "or" for a "/", "belong to" for
+    "are the property of", a sentence present on one side only. Small drift in
+    the one document that makes wording an obligation is exactly the drift worth
+    a test.
+    """
+
+    @staticmethod
+    def _paragraphs(text: str) -> list[str]:
+        return [re.sub(r"\s+", " ", p).strip() for p in text.strip().split("\n\n") if p.strip()]
+
+    def _readme_disclaimer(self) -> list[str]:
+        section = _readme().split("## Disclaimer", 1)[1].split("## Licence")[0]
+        return self._paragraphs(section)
+
+    def _disclaimer_quotes(self) -> list[str]:
+        source = (_README.parent / "docs" / "DISCLAIMER.md").read_text(encoding="utf-8")
+        blocks = re.findall(r"((?:^>.*\n?)+)", source, re.M)
+        return [re.sub(r"\s+", " ", re.sub(r"^>\s?", "", b, flags=re.M)).strip() for b in blocks]
+
+    def test_readme_and_disclaimer_agree_word_for_word(self) -> None:
+        readme, disclaimer = self._readme_disclaimer(), self._disclaimer_quotes()
+        assert len(disclaimer) >= 2, "docs/DISCLAIMER.md no longer quotes both paragraphs"
+        assert readme[:2] == disclaimer[:2]
+
+    def test_the_pdfs_print_the_same_trademark_paragraph(self) -> None:
+        from markproof.report.pdf_reportlab import TRADEMARK_NOTICE
+
+        assert self._readme_disclaimer()[0] == re.sub(r"\s+", " ", TRADEMARK_NOTICE).strip()
+
+    def test_the_readme_points_at_the_full_scope_limits(self) -> None:
+        assert "docs/DISCLAIMER.md" in _readme(), "the README no longer links the disclaimer"
+
+
 class TestShippedExamples:
     """Every example config in the repo must load — they are what people copy."""
 

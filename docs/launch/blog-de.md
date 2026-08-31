@@ -3,19 +3,24 @@ SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
 SPDX-License-Identifier: CC-BY-4.0
 
 ENTWURF — nicht veröffentlicht. Vor dem Publizieren prüfen:
-  - Sternzahlen im Aufhänger (Stand nachziehen, s. TODO im Text)
-  - Links auf die Fremdprojekte auf Erreichbarkeit
+  - Sternzahlen im Aufhänger (erhoben am 31.08.2026 — bei späterer
+    Veröffentlichung neu erheben und das Datum mitziehen)
+  - Links auf die Fremdprojekte auf Erreichbarkeit (geprüft am 31.08.2026: alle
+    sieben unten verlinkten GitHub-Repositories antworten)
   - Versionsnummer im Konsolen-Transkript (aktuell 0.1.0.dev0 im Report)
 -->
 
 # Markierungen überleben die Auslieferung nicht
 
 Zwei Zahlen aus GitHub, die zusammen mehr über den Stand der Inhaltsmarkierung
-sagen als jedes Positionspapier. Werkzeuge, deren erklärter Zweck es ist, C2PA-
-Manifeste und Text-Wasserzeichen zu *entfernen*, haben zusammen weit über 30.000
-Sterne gesammelt. Die offizielle Referenzimplementierung von C2PA hat rund 410.
-
-<!-- TODO vor Veröffentlichung: beide Zahlen neu erheben und Stand datieren. -->
+sagen als jedes Positionspapier. Am 31. August 2026 hielten zwei der
+meistbeachteten Werkzeuge, deren erklärter Zweck das Entfernen von
+KI-Wasserzeichen und Herkunftsmetadaten ist —
+[watermarks-remover](https://github.com/guillaumemeyer/watermarks-remover) und
+[remove-ai-watermarks](https://github.com/wiltodelta/remove-ai-watermarks) —,
+zusammen rund 19.600 und 5.300 Sterne; das erste sammelte seinen Anteil in drei
+Wochen. Die offizielle Referenzimplementierung von C2PA,
+[c2pa-rs](https://github.com/contentauth/c2pa-rs), hielt 410.
 
 Man kann daraus eine Geschichte über Böswilligkeit machen, und die stimmt auch.
 Mich interessiert die langweiligere Hälfte. Wer eine Markierung mutwillig

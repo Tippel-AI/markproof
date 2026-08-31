@@ -18,6 +18,7 @@ Apache-2.0 (see LICENSE)
 CC-BY-4.0 (see LICENSE-DATA)
     src/markproof/rulepacks/    versioned rule definitions
     src/markproof/patterns/     curated disclosure and label phrasings
+    src/markproof/prompts/      probe prompt sets, with their guideline refs
     docs/                      project documentation
 
 The data portions are separately licensed because they are derived from
@@ -29,11 +30,11 @@ keeps the attribution chain intact and lets third parties reuse the rulepacks.
 2. Attribution for derived CC-BY-4.0 material
 ================================================================================
 
-The rulepacks and patterns in this project are derived from, and paraphrase,
-the following works. They do not reproduce their normative text; rules cite
-clause and margin numbers, and the authoritative wording remains with the
-sources. Each rulepack additionally carries its own machine-readable
-"attribution:" field.
+The rulepacks, patterns and prompt sets in this project are derived from, and
+paraphrase, the following works. They do not reproduce their normative text;
+rules cite clause and margin numbers, and the authoritative wording remains with
+the sources. Each rulepack additionally carries its own machine-readable
+"attribution:" field, which also travels in every generated report.
 
   European Commission, "Guidelines on the implementation of the transparency
   obligations for certain AI systems under Article 50 of the AI Act",
@@ -42,12 +43,30 @@ sources. Each rulepack additionally carries its own machine-readable
   Licensed under CC BY 4.0 (Commission Decision 2011/833/EU).
 
   European Commission / AI Board, "Code of Practice on Transparency of
-  AI-generated Content", July 2026.
+  AI-generated Content", 10 June 2026.
   https://digital-strategy.ec.europa.eu/en/policies/code-practice-ai-generated-content
   Licensed under CC BY 4.0 (Commission Decision 2011/833/EU).
 
   Regulation (EU) 2024/1689 (Artificial Intelligence Act), Official Journal of
   the European Union. Legislative text; freely reproducible.
+
+Copyright in the two Commission works named above: © European Union, 2026.
+They are reused under the Creative Commons Attribution 4.0 International Public
+License (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/ — full text in
+LICENSE-DATA — pursuant to Commission Decision 2011/833/EU.
+
+CHANGED. This project modified that licensed material rather than passing it on:
+the obligations stated in those works were paraphrased into machine-readable
+rules, curated into matching patterns and probe prompt sets in German and
+English, and narrowed to the subset a probe can decide. Which obligations became
+a rule, and the wording of every rule, pattern, prompt and rationale, are ours.
+No normative text is reproduced; each item cites the section and paragraph it
+rests on. The works were used as published, directly from the source documents;
+no earlier modifications by others are known.
+
+The licensed material is provided by the licensor as-is and as-available, and
+without warranties or representations of any kind — see Section 5 of
+LICENSE-DATA (Disclaimer of Warranties and Limitation of Liability).
 
 Neither the European Commission nor the AI Board endorses this project or the
 way its material has been interpreted here.
@@ -80,8 +99,10 @@ See docs/DISCLAIMER.md.
 
 markproof depends on the following third-party packages at run time. They are
 installed by pip/uv from PyPI and are NOT vendored or redistributed in this
-repository or in the markproof wheel. The complete, generated dependency
-license inventory lives in THIRD_PARTY_LICENSES.md and is refreshed per release.
+repository or in the markproof wheel — each package's own licence and NOTICE
+travel with that package, not with this one. The list below names the direct
+dependencies and their licences; it is deliberately not a transitive inventory,
+because markproof redistributes nothing that would oblige one.
 
   c2pa-python  (Content Authenticity Initiative)   MIT OR Apache-2.0
       Official bindings for c2pa-rs; loads the prebuilt c2pa-rs native library
@@ -105,6 +126,6 @@ Optional extras, installed only on request:
   playwright                                       Apache-2.0   [ui]
       Browser binaries are downloaded at run time and are not redistributed.
 
-Development-only tools (not distributed with the package): pytest, mypy, ruff,
-respx, hypothesis (MPL-2.0), pre-commit, uv, and c2patool (Apache-2.0 OR MIT,
-part of contentauth/c2pa-rs) for generating test fixtures.
+Development-only tools (not distributed with the package): pytest, pytest-cov,
+mypy, ruff, respx, hypothesis (MPL-2.0), pre-commit, uv, and c2patool
+(Apache-2.0 OR MIT, part of contentauth/c2pa-rs) for generating test fixtures.

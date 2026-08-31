@@ -27,6 +27,13 @@ text_marking:
   method: synthid
   # The operator's generation-side parameters. In production these keys are a
   # secret — anyone holding them can verify *and* forge the mark.
-  watermark_config: watermark_config.json
+  #
+  # The file is called *.demo.json rather than watermark_config.json on purpose:
+  # it holds three throwaway keys for a bot that serves fixed strings, and the
+  # config schema forbids unknown fields, so the name is the only marking that
+  # survives someone copying the file out of this repository as a template. Do
+  # not mark production output with those keys. See README.md § watermark
+  # config.
+  watermark_config: watermark_config.demo.json
 
 rulepack: art50-eu-2026.07

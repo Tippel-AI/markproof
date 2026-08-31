@@ -26,13 +26,15 @@ stärkste, weil er ohne Vorwissen funktioniert und die Zahlen im Titel
 noch um die Sternzahlen geht.
 
 1. **Content marks don't survive delivery**
-2. **Tools that strip C2PA have 30k GitHub stars; the reference implementation has 410**
+2. **Two tools that strip AI watermarks have 25k GitHub stars; the C2PA reference implementation has 410**
 3. **A C2PA manifest can be validly signed and still not mark the image as AI-generated**
 
-Falls die Sternzahlen bis zum Posten abweichen: Titel 2 mit den dann gemessenen
-Zahlen setzen oder fallen lassen. Eine gerundete Zahl, die jemand in dreißig
-Sekunden widerlegt, kostet in einem Compliance-Kontext mehr, als der Titel
-einbringt.
+Die Zahlen in Titel 2 sind am 31.08.2026 erhoben:
+`guillaumemeyer/watermarks-remover` 19 617, `wiltodelta/remove-ai-watermarks`
+5 343, `contentauth/c2pa-rs` 410. Falls sie bis zum Posten abweichen: Titel 2
+mit den dann gemessenen Zahlen setzen oder fallen lassen. Eine gerundete Zahl,
+die jemand in dreißig Sekunden widerlegt, kostet in einem Compliance-Kontext
+mehr, als der Titel einbringt.
 
 ---
 

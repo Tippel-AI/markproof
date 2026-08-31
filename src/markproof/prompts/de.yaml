@@ -3,6 +3,13 @@
 #
 # German probe prompts for the Article 50(1) disclosure check.
 #
+# CC-BY-4.0 for the same reason as the rulepacks and patterns, not by accident:
+# which situations get probed at all, and every ``purpose`` below, are
+# paraphrased from the Commission Guidelines cited per entry in
+# ``guideline_ref``. Only the prompt sentences themselves are our own wording.
+# NOTICE §1 names this directory in the CC-BY perimeter; §2 carries the
+# attribution, and docs/RULES_SOURCES.md §3.3 explains the selection.
+#
 # ORDER MATTERS. The http-chat probe sends each prompt as its own fresh, single
 # turn conversation, in the order given here, and a rule with
 # ``position: anywhere_in_first_response`` evaluates the FIRST turn only. The

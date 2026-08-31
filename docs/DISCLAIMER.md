@@ -11,10 +11,15 @@ SPDX-License-Identifier: CC-BY-4.0
 > (SynthID), Adobe / the Content Authenticity Initiative (C2PA), or the European
 > Commission. All trademarks are the property of their respective owners.
 
-> markproof performs technical conformance testing. It is not legal advice.
+> markproof performs technical conformance testing. It is not legal advice and
+> produces no certification. A passing report is evidence that specific checks
+> passed at a specific time — nothing more.
 
-Those two paragraphs are reproduced verbatim in the README and are part of the
-release checklist, not decoration.
+Both paragraphs stand word for word in the README, and the first one is also the
+string both PDF renderers print (`TRADEMARK_NOTICE` in
+`src/markproof/report/pdf_reportlab.py`). `NOTICE` §3 carries the same trademark
+paragraph and a shortened form of the second. They are part of the release
+checklist, not decoration: edit one and you edit all of them.
 
 Third-party names appear in this project only descriptively, to say what the
 tool verifies — "verifies C2PA manifests", "detects SynthID text watermarks".
@@ -36,8 +41,8 @@ evidence, not a legal opinion; a red run is a hint about a technical fact, not a
 finding of infringement. For a legal assessment, talk to a lawyer.
 
 The rules in the shipped rulepacks paraphrase the Commission's Guidelines of
-20 July 2026 and the Code of Practice on Transparency of July 2026, and cite the
-clause they derive from. The authoritative wording is in those sources, and the
+20 July 2026 and the Code of Practice on Transparency of 10 June 2026, and cite
+the clause they derive from. The authoritative wording is in those sources, and the
 interpretation encoded here is ours, not the Commission's.
 
 ## Scope limits

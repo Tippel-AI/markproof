@@ -5,10 +5,14 @@
 # gate. Deliberately runs WITHOUT the optional extras — the default path has to
 # stay installable with zero system dependencies (Auflage A2).
 #
-# Sibling workflows arrive later: extras.yml (playwright + synthid, nightly),
-# canary.yml (unpinned c2pa-python/transformers, nightly), conformance-demo.yml
-# (dogfood badge), release.yml (tag -> PyPI via Trusted Publishing),
-# licenses.yml (THIRD_PARTY_LICENSES.md + SPDX headers).
+# Siblings that already exist: dogfood.yml (the demo target, badge included) and
+# release.yml (tag -> PyPI via Trusted Publishing). Still to come: extras.yml
+# (playwright + synthid, nightly) and canary.yml (unpinned c2pa-python and
+# transformers, nightly). The SPDX-header lint needs no workflow of its own — it
+# runs in the lint job below, out of .pre-commit-config.yaml. There is no
+# generated dependency-licence inventory and NOTICE no longer promises one:
+# nothing here is vendored, so the direct-dependency list in NOTICE section 4 is
+# the whole obligation.
 
 name: ci
 
@@ -38,6 +42,10 @@ jobs:
         run: uv run --python 3.11 --extra dev ruff check .
       - name: ruff format --check
         run: uv run --python 3.11 --extra dev ruff format --check .
+      # The SPDX-header ground rule from CONTRIBUTING.md. A hook a contributor
+      # has to install locally is a suggestion; run here it is the rule.
+      - name: SPDX headers
+        run: uv run --python 3.11 --extra dev pre-commit run spdx-header --all-files
 
   typecheck:
     name: typecheck (mypy)

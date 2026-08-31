@@ -3,19 +3,23 @@ SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
 SPDX-License-Identifier: CC-BY-4.0
 
 DRAFT — not published. Check before publishing:
-  - star counts in the opening (re-measure, see TODO in the text)
-  - the third-party links still resolve
+  - star counts in the opening (measured 31.08.2026 — re-measure if this goes
+    out much later, and move the date with them)
+  - the third-party links still resolve (checked 31.08.2026: all seven GitHub
+    repositories linked below answer)
   - the version in the console transcript (report currently says 0.1.0.dev0)
 -->
 
 # Content marks don't survive delivery
 
 Two numbers from GitHub say more about the state of content marking than any
-position paper. Tools whose stated purpose is to *strip* C2PA manifests and text
-watermarks have collected well over 30,000 stars between them. The official C2PA
-reference implementation has about 410.
-
-<!-- TODO before publishing: re-measure both figures and date them. -->
+position paper. On 31 August 2026, two of the most-starred tools whose stated
+purpose is stripping AI watermarks and provenance metadata —
+[watermarks-remover](https://github.com/guillaumemeyer/watermarks-remover) and
+[remove-ai-watermarks](https://github.com/wiltodelta/remove-ai-watermarks) —
+held about 19,600 and 5,300 stars between them, and the first of the two
+collected its share in three weeks. The official C2PA reference implementation,
+[c2pa-rs](https://github.com/contentauth/c2pa-rs), held 410.
 
 You can read that as a story about bad actors, and it is one. The duller half
 interests me more. Someone determined to remove a mark will remove it, and no

@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
+# SPDX-License-Identifier: Apache-2.0
+#
+# Two jobs, both cheap enough for every commit: ruff, pinned to the same version
+# the dev extra installs so hook and CI cannot disagree, and the SPDX-header
+# ground rule from CONTRIBUTING.md. The header check is the reason this file
+# exists: a licensing rule nobody enforces is a licensing rule that drifts, and
+# this repository ships two licences whose boundary is drawn by those headers.
+#
+#   uv run pre-commit install          # once, per clone
+#   uv run pre-commit run --all-files  # the whole tree
+#
+# mypy and pytest deliberately stay out. Both need the full environment and are
+# slow enough that a commit hook running them gets bypassed with --no-verify,
+# which is worse than not having it. CI runs them.
+
+minimum_pre_commit_version: "3.8.0"
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.5
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+        # Upstream also formats Python blocks inside Markdown. The prose in this
+        # repository is not a place where that should happen silently.
+        types_or: [python, pyi]
+
+  - repo: local
+    hooks:
+      - id: spdx-header
+        name: SPDX header on every file that can carry one
+        description: >-
+          The ground rule in CONTRIBUTING.md, enforced. Media fixtures, JSON
+          data files, the demo texts and the licence texts themselves cannot
+          carry a comment; they are covered by the directory perimeter in
+          NOTICE section 1 instead, which is why the type filter below stops
+          where it does.
+        language: system
+        pass_filenames: true
+        types_or: [python, yaml, markdown, toml, shell]
+        entry: >-
+          bash -c 'rc=0; for f in "$@"; do head -12 "$f" | grep -q
+          "SPDX-License-Identifier:" || { echo "no SPDX-License-Identifier in
+          the first 12 lines: $f"; rc=1; }; done; exit $rc' --

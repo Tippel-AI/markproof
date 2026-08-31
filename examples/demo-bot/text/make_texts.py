@@ -96,7 +96,7 @@ from lattice import (
 )
 
 HERE = Path(__file__).resolve().parent
-CONFIG_PATH = HERE.parent / "watermark_config.json"
+CONFIG_PATH = HERE.parent / "watermark_config.demo.json"
 
 #: Beam width. Wide enough that a locally poor choice which sets up a strong
 #: context survives to be judged on the result; narrow enough to finish in
@@ -518,7 +518,7 @@ def main() -> None:
             "is sampled from a model and none is taken from a third party."
         ),
         "generator": "examples/demo-bot/text/make_texts.py",
-        "watermark_config": "examples/demo-bot/watermark_config.json",
+        "watermark_config": "examples/demo-bot/watermark_config.demo.json",
         "tokenizer": config.tokenizer,
         "transformers": __import__("transformers").__version__,
         "torch": torch.__version__,

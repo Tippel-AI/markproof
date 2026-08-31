@@ -64,13 +64,22 @@ Three things worth knowing:
 - There is no token to create. No `PYPI_TOKEN` secret, no `~/.pypirc`, nothing to
   rotate or leak. If you catch yourself making one, something has gone wrong.
 
-### 1.3 Open item before the first release
+### 1.3 Dependency licences — nothing to generate
 
-`NOTICE` promises a `THIRD_PARTY_LICENSES.md` that is "refreshed per release", and
-that file does not exist yet. Either generate it (e.g. `uv run --extra dev
-pip-licenses`-style inventory, committed) or soften the sentence in `NOTICE`.
-Shipping a NOTICE that points at a missing file is the kind of small dishonesty
-this project cannot afford.
+`NOTICE` used to promise a `THIRD_PARTY_LICENSES.md` "refreshed per release" that
+never existed. That sentence is gone (audit A2.4). The decision behind it, so
+nobody re-adds the promise: markproof vendors and redistributes no dependency —
+the wheel contains only `src/markproof` — so neither Apache-2.0 §4(d) nor any
+other licence in the tree obliges a transitive inventory, and each package's own
+NOTICE travels with that package from PyPI. Section 4 of `NOTICE` lists the
+direct dependencies and their licences by hand, and that list is what a release
+has to keep true.
+
+So the per-release duty is one line: if `[project.dependencies]` or
+`[project.optional-dependencies]` in `pyproject.toml` changed, make section 4 of
+`NOTICE` match before tagging. If you ever do want the generated inventory,
+generate it — but then also add the workflow that refreshes it, because a stale
+inventory is worse than none.
 
 ---
 

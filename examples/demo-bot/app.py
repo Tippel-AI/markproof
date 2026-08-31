@@ -18,7 +18,7 @@ Behaviour is selected by ``DEMO_MODE``:
     action declares ``digitalSourceType = trainedAlgorithmicMedia``, which is
     what Art. 50(2) asks for. The answer text is additionally *watermarked*:
     its token sequence carries a SynthID-style mark under the config in
-    ``watermark_config.json``.
+    ``watermark_config.demo.json``.
 
 ``fail``
     No disclosure anywhere, and the direct question gets the evasive
