@@ -73,9 +73,9 @@
     "version": "1.0.0"
   },
   "run": {
-    "markproof_version": "0.1.0.dev0",
-    "platform": "darwin",
-    "python_version": "3.13.7",
+    "markproof_version": "0.0.0-golden",
+    "platform": "golden",
+    "python_version": "0.0.0",
     "timestamp": "2026-08-31T12:00:00+00:00"
   },
   "schema_version": 1,

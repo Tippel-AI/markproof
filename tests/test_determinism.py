@@ -37,11 +37,11 @@ import pytest
 
 from markproof.cli import _load_label_sets, _load_pattern_sets, _resolve_rulepack
 from markproof.probes.base import Artifact, Evidence
-from markproof.report.model import build_report
+from markproof.report.model import RunMetadata, build_report
 from markproof.report.sign import report_from_dict
 from markproof.rules.engine import combine, evaluate, probe_failure_finding
 from markproof.rules.schema import Applicability, load_rulepack
-from tests.golden.generate import TIMESTAMP
+from tests.golden.generate import FROZEN_RUN
 
 pytestmark = pytest.mark.determinism
 
@@ -101,7 +101,7 @@ def _report_bytes(case: Path) -> str:
         target=spec.get("target", "golden"),
         rulepack=rulepack,
         findings=findings,
-        timestamp=TIMESTAMP,
+        run=RunMetadata(**FROZEN_RUN),
         applicability=applicability,
     )
     # Exactly what the CLI writes, minus the signature — which is deterministic

@@ -155,6 +155,7 @@ def build_report(
     findings: list[Finding],
     timestamp: str | None = None,
     applicability: Applicability | None = None,
+    run: RunMetadata | None = None,
 ) -> Report:
     """Assemble a report from a completed run.
 
@@ -164,6 +165,12 @@ def build_report(
         findings: Findings in evaluator order — already stable.
         timestamp: ISO-8601 UTC. Injectable so tests can pin it; defaults to
             now, because an unsigned artefact without a time is not evidence.
+        run: The whole run block, when every field of it has to be pinned.
+            Overrides ``timestamp``. The determinism gate needs this: the
+            interpreter version and the platform are recorded on purpose, so two
+            honest runs of the same evidence on a Mac and on a Linux runner
+            legitimately differ in bytes, and a golden file that embedded either
+            would fail everywhere except the machine that wrote it.
         applicability: The scope the operator declared. Recorded verbatim, and
             omitted entirely when empty — an empty declaration and no
             declaration are the same statement, and writing one out would
@@ -187,7 +194,8 @@ def build_report(
             # discharge the licence.
             "attribution": " ".join(rulepack.attribution.split()),
         },
-        run=RunMetadata(
+        run=run
+        or RunMetadata(
             timestamp=timestamp or datetime.now(UTC).isoformat(timespec="seconds"),
             markproof_version=__version__,
             python_version=platform.python_version(),

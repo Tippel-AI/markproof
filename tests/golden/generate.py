@@ -15,6 +15,9 @@ and the loader reattaches the bytes, which keeps the evidence files readable and
 keeps one copy of each fixture in the repository.
 """
 
+# ruff: noqa: T201 - a generator script reports what it wrote, like its sibling
+# in tests/fixtures/media/generate.py.
+
 from __future__ import annotations
 
 import json
@@ -28,6 +31,19 @@ _FIXTURES = _HERE.parent / "fixtures"
 #: varies between two runs of the same inputs lives in ``run``, and the
 #: determinism gate exists to prove that nothing else does.
 TIMESTAMP = "2026-08-31T12:00:00+00:00"
+
+#: The whole run block, frozen. The interpreter version and the platform are
+#: recorded in a real report on purpose — a reader wants to know where a verdict
+#: was produced — which means two honest runs of the same evidence on macOS and on
+#: a Linux runner differ in bytes and neither is wrong. A golden that embedded
+#: either would pass only on the machine that wrote it, so the gate pins all four
+#: fields and tests the pipeline rather than the host.
+FROZEN_RUN = {
+    "timestamp": TIMESTAMP,
+    "markproof_version": "0.0.0-golden",
+    "python_version": "0.0.0",
+    "platform": "golden",
+}
 
 
 def _turn(prompt_id: str, response: str, *, user_said: str | None = None) -> dict[str, Any]:
@@ -232,7 +248,9 @@ CASES: dict[str, dict[str, Any]] = {
                 "probe_kind": "ui",
                 "target_name": "golden",
                 "lang": "de",
-                "turns": [_turn("ui-initial-view", "Frisch gebrüht. Öffnungszeiten: 6 bis 18 Uhr.")],
+                "turns": [
+                    _turn("ui-initial-view", "Frisch gebrüht. Öffnungszeiten: 6 bis 18 Uhr.")
+                ],
             }
         ],
     },
@@ -245,7 +263,7 @@ def write_cases() -> list[Path]:
     for name, case in CASES.items():
         directory = _HERE / name
         directory.mkdir(exist_ok=True)
-        payload = {k: v for k, v in case.items()}
+        payload = dict(case)
         (directory / "evidence.json").write_text(
             json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
             encoding="utf-8",
