@@ -33,6 +33,17 @@ explicitly: the **rulepack format** — what a rulepack file may contain — and
 
 ### Added
 
+- **`markproof init`** writes a starting `markproof.yaml`. The CLI's own docstring
+  had promised this command since M4 and the build did not have it. The scaffold
+  configures one chat probe and leaves media, UI and text marking commented out
+  with the reason each is optional — a config full of settings nobody chose is how
+  people end up running checks they cannot interpret.
+
+- **PDF output is reachable** (#21). `report.formats` accepts `pdf` and
+  `pdf-html`; both renderers existed, were tested, and could not be produced by any
+  invocation of the shipped tool. `report.sign_key` and `report.output_dir` are
+  honoured too — they were validated and then ignored.
+
 - **Targets can declare which Article 50 obligations bind them** (#14). A new
   `applicability` block in `markproof.yaml` maps obligations —
   `ai-interaction`, `synthetic-media-marking`, `synthetic-text-marking`,

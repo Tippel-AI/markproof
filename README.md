@@ -11,6 +11,7 @@ markproof calls your *running* AI endpoint the way a user would, and checks what
 
 ```bash
 pipx install git+https://github.com/Tippel-AI/markproof
+markproof init                       # writes a starting markproof.yaml
 markproof run --config markproof.yaml
 ```
 

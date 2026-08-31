@@ -440,3 +440,63 @@ class TestSignKeyFromConfig:
         assert result.exit_code == 0, result.output
         report = json.loads((out / "report.json").read_text(encoding="utf-8"))
         assert "signature" in report, "the configured key was ignored"
+
+
+class TestInit:
+    """The command the module docstring promised and the build did not have.
+
+    A promised-but-absent command is worse than no command: it tells a reader the
+    documentation is not checked against the code, which for a tool selling
+    verification is the wrong first impression.
+    """
+
+    def test_it_writes_a_config_that_actually_loads(self, tmp_path: Path) -> None:
+        """A scaffold that fails validation would be worse than none at all."""
+        from markproof.config import load_config
+
+        target = tmp_path / "markproof.yaml"
+        result = RUNNER.invoke(app, ["init", "--config", str(target)])
+        assert result.exit_code == 0, result.output
+        config = load_config(target)
+        assert config.target.probes
+        assert config.rulepack == "art50-eu-2026.07"
+
+    def test_the_rulepack_it_names_is_one_that_ships(self, tmp_path: Path) -> None:
+        from markproof.config import load_config
+
+        target = tmp_path / "markproof.yaml"
+        RUNNER.invoke(app, ["init", "--config", str(target)])
+        packaged = Path(__file__).resolve().parent.parent / "src" / "markproof" / "rulepacks"
+        assert (packaged / f"{load_config(target).rulepack}.yaml").is_file()
+
+    def test_it_refuses_to_clobber_an_existing_config(self, tmp_path: Path) -> None:
+        target = tmp_path / "markproof.yaml"
+        target.write_text("version: 1\n# hand-written\n", encoding="utf-8")
+        result = RUNNER.invoke(app, ["init", "--config", str(target)])
+        assert result.exit_code == 2
+        assert "hand-written" in target.read_text(encoding="utf-8")
+
+    def test_force_overwrites(self, tmp_path: Path) -> None:
+        target = tmp_path / "markproof.yaml"
+        target.write_text("old\n", encoding="utf-8")
+        result = RUNNER.invoke(app, ["init", "--config", str(target), "--force"])
+        assert result.exit_code == 0
+        assert "old" not in target.read_text(encoding="utf-8")
+
+    def test_the_url_and_name_reach_the_file(self, tmp_path: Path) -> None:
+        from markproof.config import load_config
+
+        target = tmp_path / "markproof.yaml"
+        RUNNER.invoke(
+            app,
+            ["init", "--config", str(target), "--url", "https://x.test/v1/c", "--name", "prod-bot"],
+        )
+        config = load_config(target)
+        assert config.target.name == "prod-bot"
+        assert config.target.probes[0].url == "https://x.test/v1/c"
+
+    def test_it_points_somewhere_a_newcomer_can_actually_go(self, tmp_path: Path) -> None:
+        result = RUNNER.invoke(app, ["init", "--config", str(tmp_path / "markproof.yaml")])
+        assert "demo-bot" in result.output, (
+            "a first-time user with no endpoint of their own needs somewhere to point this"
+        )

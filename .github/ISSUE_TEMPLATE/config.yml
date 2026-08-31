@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Tippel-AI/markproof/security/advisories/new
+    about: Report privately. Signing keys and report integrity are in scope — see SECURITY.md.
+  - name: Is my system in scope of Article 50?
+    url: https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai
+    about: markproof is a conformance test, not legal advice. That question is for a lawyer.
