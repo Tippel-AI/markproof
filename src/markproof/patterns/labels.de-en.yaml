@@ -1,0 +1,628 @@
+# SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
+# SPDX-License-Identifier: CC-BY-4.0
+#
+# Curated phrasings for the Article 50(4) deep fake label check and the
+# Article 50(3) emotion-recognition notice check.
+#
+# Matching contract (see checks/labels.py, shared with checks/disclosure.py):
+#   * the text is NFKC-normalised, casefolded and whitespace-collapsed BEFORE
+#     matching, so patterns are written lowercase, without newlines, and with
+#     "ss" where the source text has "ß" — casefold maps ß to ss;
+#   * regexes run with re.IGNORECASE | re.UNICODE;
+#   * substrings are normalised the same way before the containment test;
+#   * every entry carries a `category`, and a rule names the category it wants.
+#     A rule about deep fakes can therefore never be satisfied by an emotion
+#     recognition notice, and vice versa;
+#   * a positive match wins: negatives only take effect when nothing positive
+#     matched anywhere, and then downgrade the finding to AMBIGUOUS ("needs
+#     human review") rather than reporting a missing label.
+#
+# Regexes avoid nested quantifiers and unbounded wildcards; every alternation is
+# a list of literals, so matching stays linear in the length of the text.
+#
+# KNOWN LIMIT, stated here because it shapes the whole file: the EU icon that
+# Code of Practice Section 2, Measure 1.1(a) makes the reference implementation
+# is a *graphic* whose main element is the capitalised acronym "AI". A graphic
+# carries no text, so no pattern here can see it. What this file can see is the
+# interactive second layer the same measure encourages — the words "generiert" /
+# "modifiziert", "generated" / "modified" next to the icon — and the written
+# disclaimers deployers use instead. A page that ships the bare icon and nothing
+# else will therefore read as unlabelled. That is one of the reasons MPF-L-001
+# is `warn` and not `fail`; see docs/RULES_SOURCES.md §9.
+
+version: 1
+description: >-
+  Curated phrasings for the Article 50(4) deep fake labelling duty and the
+  Article 50(3) notice for emotion recognition and biometric categorisation.
+  Positive patterns disclose the artificial origin of the content, or the
+  operation of the system, as required by Guidelines C(2026) 5054 §6.1.2
+  para 117 and §5.1.3 paras 105 and 107. Negative patterns collect wordings that
+  look like a label at a glance and do not discharge the duty.
+
+patterns:
+  # ===========================================================================
+  # Deep fake labels — Art. 50(4), first subparagraph
+  # ===========================================================================
+
+  # --- German ---------------------------------------------------------------
+  - id: de-df-01-ki-generiert
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\b(?:ki|k\.i\.)-(?:generiert|generierte[rnms]?|erzeugt|erzeugte[rnms]?|erstellt|erstellte[rnms]?|verändert|veränderte[rnms]?|manipuliert|manipulierte[rnms]?)\b'
+    note: >-
+      The compact German badge. Discloses the artificial origin of the content
+      in words a person reads without a tool — the form §6.1.2 para 117 asks
+      for. Covers manipulation as well as generation, because Article 50(4)
+      reaches both.
+
+  - id: de-df-02-ki-generiertes-medium
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\b(?:ki|k\.i\.)-(?:generierte[rnms]?|erzeugte[rnms]?|erstellte[rnms]?|veränderte[rnms]?) (?:bild|bilder|foto|fotos|video|videos|audio|aufnahme|aufnahmen|szene|darstellung|abbildung|stimme|inhalt|inhalte)\b'
+    note: >-
+      Names the modality alongside the origin ("KI-generiertes Bild"). The
+      modalities are those of Article 50(4), first subparagraph: image, audio,
+      video.
+
+  - id: de-df-03-mit-ki-erstellt
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\bmit (?:ki\b|k\.i\.|künstlicher intelligenz|hilfe von ki|hilfe künstlicher intelligenz) (?:erstellt|erzeugt|generiert|produziert|bearbeitet|verändert|manipuliert)\b'
+    note: >-
+      Prepositional form of the disclosure, the phrasing most German editorial
+      style guides use. Substance over vocabulary, §6.1.2 para 117.
+
+  - id: de-df-04-von-ki-erstellt
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\bvon (?:einer )?(?:ki\b|k\.i\.|künstlichen intelligenz|einem ki-system|einem ki-modell) (?:erstellt|erzeugt|generiert|verändert|manipuliert|bearbeitet)\b'
+    note: >-
+      Agent form ("von einer KI erzeugt"). Same disclosure, different sentence
+      shape; both appear in practice and neither is privileged by the
+      Guidelines.
+
+  - id: de-df-05-kuenstlich-erzeugt
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\bkünstlich (?:erzeugt|erzeugte[rnms]?|generiert|generierte[rnms]?|erstellt|erstellte[rnms]?)\b'
+    note: >-
+      The wording of the Article itself ("künstlich erzeugt"), without the word
+      KI. §6.1.2 para 117 asks for the artificial origin to be disclosed, not
+      for a particular term.
+
+  - id: de-df-06-kuenstlich-veraendert
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\bkünstlich (?:verändert|veränderte[rnms]?|manipuliert|manipulierte[rnms]?|bearbeitet|bearbeitete[rnms]?)\b'
+    note: >-
+      The manipulation half of the duty. Article 50(4) covers content that was
+      generated *or* manipulated, and a label that only ever says "generiert"
+      leaves the manipulated case undisclosed.
+
+  - id: de-df-07-synthetische-medien
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\bsynthetische[rnms]? (?:medien|inhalt|inhalte|bild|bilder|video|videos|audio|stimme|aufnahme|darstellung)\b'
+    note: >-
+      "Synthetisch" is the term the Guidelines themselves use for the content in
+      scope (§4.1.2, and §6 throughout). Legible to a lay reader in German, so
+      it satisfies the perceivability requirement of §6.1.2 para 117.
+
+  - id: de-df-08-deepfake-selbstbezeichnung
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\b(?<!kein )(?<!keine )(?<!nicht )deep ?fakes?\b'
+    note: >-
+      Content that names itself a deep fake has disclosed its artificial origin
+      in the most direct way available. The lookbehinds keep the pattern off
+      "kein Deepfake" and "nicht Deepfake", which assert the opposite; without
+      them a denial would read as a label.
+
+  - id: de-df-09-ai-icon-zweite-ebene
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\bai[- ](?:generiert|generierte[rnms]?|modifiziert|modifizierte[rnms]?|verändert|veränderte[rnms]?)\b'
+    note: >-
+      The interactive second layer of the EU icon: Code of Practice Section 2,
+      Measure 1.1(b) encourages supplementing the "AI" acronym with text saying
+      whether the content was generated or modified. The icon itself is a
+      graphic and cannot be matched — see the file header.
+
+  - id: de-df-10-hinweissatz
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\b(?:dieses|dieser|diese) (?:bild|foto|video|audio|inhalt|clip|aufnahme|darstellung|material) (?:wurde|ist|sind) (?:teilweise |vollständig |vollstaendig )?(?:mit ki|mit k\.i\.|mit künstlicher intelligenz|von einer ki|durch ki|ki-)'
+    note: >-
+      The full-sentence disclaimer, the form used where an icon does not fit.
+      Anchored on a demonstrative so it describes *this* content: §7.1 para 142
+      ties the information to the content it concerns, and a floating sentence
+      about AI in general would not.
+
+  - id: de-df-11-ki-inhalt
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\b(?:ki|k\.i\.)-(?:inhalt|inhalte|content|medien|bildmaterial|videomaterial|aufnahme)\b'
+    note: >-
+      Noun-compound badge ("KI-Bildmaterial"), common in German picture credits
+      and captions.
+
+  - id: de-df-12-computergeneriert
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\b(?:computergeneriert|computer-generiert|computergenerierte[rnms]?|maschinell (?:erzeugt|generiert|erstellt))\b'
+    note: >-
+      Established German label form predating the AI Act. Discloses the
+      artificial origin without naming the technology, which §6.1.2 para 117
+      accepts — it asks for the origin, not for a vocabulary.
+
+  # --- English --------------------------------------------------------------
+  - id: en-df-01-ai-generated
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\bai[- ](?:generated|created|produced|synthesised|synthesized|made)\b'
+    note: >-
+      The compact English badge and the most widely deployed form of the
+      Article 50(4) disclosure. Perceivable without a tool, §6.1.2 para 117.
+
+  - id: en-df-02-ai-generated-medium
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\bai[- ](?:generated|created|produced|altered|manipulated) (?:image|images|photo|photos|picture|pictures|video|videos|audio|clip|scene|footage|voice|content|media)\b'
+    note: >-
+      Names the modality alongside the origin. Modalities follow Article 50(4),
+      first subparagraph: image, audio, video.
+
+  - id: en-df-03-generated-with-ai
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\b(?:generated|created|produced|made|edited|altered|modified|manipulated) (?:with|using|by) (?:ai\b|a\.i\.|artificial intelligence|generative ai|an ai (?:system|model|tool))\b'
+    note: >-
+      Prepositional form ("created with AI"). Same disclosure as en-df-01 in a
+      sentence rather than a badge.
+
+  - id: en-df-04-artificially-generated
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\bartificially (?:generated|created|produced)\b'
+    note: >-
+      The wording of the Article itself. §6.1.2 para 117 quotes the duty as
+      disclosing that the content "has been artificially generated or
+      manipulated".
+
+  - id: en-df-05-artificially-manipulated
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\bartificially (?:manipulated|altered|modified|edited)\b'
+    note: >-
+      The manipulation half of the same duty; a deployer who only ever labels
+      generation leaves manipulated content undisclosed.
+
+  - id: en-df-06-synthetic-media
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\bsynthetic (?:media|content|image|images|video|videos|audio|voice|footage|imagery)\b'
+    note: >-
+      The Guidelines' own term for content in scope (§4.1.2, §6). Understandable
+      to a lay reader, so it meets the perceivability requirement.
+
+  - id: en-df-07-deepfake-self-label
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\b(?<!not a )(?<!not )(?<!no )deep ?fakes?\b'
+    note: >-
+      Content naming itself a deep fake. The lookbehinds keep the pattern off
+      "not a deepfake" and "no deepfake", which assert the opposite.
+
+  - id: en-df-08-ai-icon-second-layer
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\bai[- ](?:modified|manipulated|altered|edited)\b'
+    note: >-
+      The "modified" branch of the EU icon's second layer, Code of Practice
+      Section 2, Measure 1.1(b). The "generated" branch is en-df-01.
+
+  - id: en-df-09-this-content-was
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\bthis (?:image|photo|picture|video|audio|clip|content|recording|footage) (?:was|is|has been) (?:partly |partially |fully |entirely )?(?:ai[- ]|artificially |computer[- ]|machine[- ])(?:generated|created|produced|manipulated|altered|modified)\b'
+    note: >-
+      Full-sentence disclaimer anchored on a demonstrative, so it describes
+      *this* content rather than AI in general — the tie §7.1 para 142 requires
+      between the information and the content it concerns. The artificial-origin
+      qualifier is mandatory in the pattern: "this image was created" alone
+      discloses nothing.
+
+  - id: en-df-10-computer-generated
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\b(?:computer[- ]generated|machine[- ]generated|cgi[- ]generated)\b'
+    note: >-
+      Established label form predating the AI Act, disclosing artificial origin
+      without naming the technology. Accepted for the same reason as
+      de-df-12: §6.1.2 para 117 asks for the origin, not a vocabulary.
+
+  - id: en-df-11-ai-content
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\bai[- ](?:content|imagery|footage|visuals|media|artwork)\b'
+    note: >-
+      Compound badge form used in English picture credits and captions.
+
+  - id: en-df-12-digitally-altered-with-ai
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\bdigitally (?:altered|manipulated|created|generated|enhanced) (?:with|using|by) (?:ai\b|artificial intelligence|generative ai)\b'
+    note: >-
+      "Digitally altered" alone is the near-miss caught by
+      en-nf-03-digitally-edited-only; qualified with AI it becomes a disclosure
+      of artificial origin.
+
+  # ===========================================================================
+  # Emotion recognition and biometric categorisation notices — Art. 50(3)
+  # ===========================================================================
+  # Shipped ahead of a rule that uses them. Article 50(3) binds the *deployer*
+  # of an emotion recognition or biometric categorisation system, and markproof
+  # cannot tell from an endpoint whether such a system is in operation — that is
+  # a fact about the deployment, not about the response. What a UI probe can
+  # check, once an operator writes a local rule saying "this kiosk runs one", is
+  # whether the notice §5.1.3 para 105 requires actually reaches the screen.
+  # See docs/RULES_SOURCES.md §9.5.
+
+  # --- German ---------------------------------------------------------------
+  - id: de-er-01-emotionserkennung
+    lang: de
+    category: emotion-recognition
+    kind: regex
+    value: '\b(?:emotionserkennung|emotionserkennungssystem|emotionserkennungssysteme|gefühlserkennung|emotionsanalyse)\b'
+    note: >-
+      Names the system directly. §5.1.3 para 105 limits the required content to
+      informing the person that such a system is being operated — reasons and
+      further processing belong to data protection law.
+
+  - id: de-er-02-emotionen-werden-erfasst
+    lang: de
+    category: emotion-recognition
+    kind: regex
+    value: '\b(?:ihre|deine|die) (?:emotionen|gefühle|gemütszustände|emotionalen zustände) (?:werden|wurden) (?:dabei |hier |automatisch )?(?:erkannt|erfasst|analysiert|ausgewertet|abgeleitet|ermittelt)\b'
+    note: >-
+      Plain-language variant addressed to the person, matching the pop-up
+      example in the box after §5.1.3 para 107.
+
+  - id: de-er-03-mimik-wird-analysiert
+    lang: de
+    category: emotion-recognition
+    kind: regex
+    value: '\b(?:ihr|dein|die|ihre|deine) (?:gesichtsausdruck|gesichtsausdrücke|mimik|gesichtsmerkmale|gesichtsbild) (?:wird|werden) (?:dabei |hier |automatisch )?(?:erfasst|aufgezeichnet|analysiert|ausgewertet|gescannt)\b'
+    note: >-
+      Emotion recognition under Article 3(39) infers from biometric data; naming
+      the facial capture is what makes the notice concrete rather than abstract
+      (§5.1.1 para 101).
+
+  - id: de-er-04-biometrische-emotionsanalyse
+    lang: de
+    category: emotion-recognition
+    kind: regex
+    value: '\bbiometrische[rnms]? (?:emotionsanalyse|emotionserkennung|gefühlsanalyse|stimmungserkennung)\b'
+    note: >-
+      Explicit about the biometric basis, which is the element that separates an
+      Article 3(39) system from text sentiment scoring — see the negative
+      de-nf-06-stimmungsanalyse-text.
+
+  - id: de-er-05-biometrische-kategorisierung
+    lang: de
+    category: emotion-recognition
+    kind: regex
+    value: '\bbiometrische[rnms]? (?:kategorisierung|kategorisierungssystem|einordnung|zuordnung|klassifizierung)\b'
+    note: >-
+      The second system type of Article 50(3), defined in Article 3(40).
+      §5.1.2 para 104 makes the duty apply to any such system, high-risk or not.
+
+  - id: de-er-06-biometrische-daten-verarbeitet
+    lang: de
+    category: emotion-recognition
+    kind: regex
+    value: '\b(?:ihre|deine) biometrischen daten werden (?:dabei |hier )?(?:verwendet|genutzt|verarbeitet|ausgewertet|erhoben|erfasst)\b'
+    note: >-
+      Addressed to the person exposed, the addressee §5.1.3 para 106 names —
+      all natural persons exposed, children included.
+
+  - id: de-er-07-alters-geschlechtsbestimmung
+    lang: de
+    category: emotion-recognition
+    kind: regex
+    value: '\b(?:altersschätzung|altersbestimmung|alterserkennung|geschlechtserkennung|geschlechtsbestimmung|altersgruppenzuordnung) (?:anhand|auf basis|mittels|per|über) (?:ihres |ihrer |des |der |eines )?(?:gesichts|gesichtsbilds|gesichtsbildes|gesichtsscans|kamerabilds|biometrischer daten)\b'
+    note: >-
+      Age and gender classification from biometric data is the worked example of
+      a biometric categorisation system in §5.1.2 para 104 and in the exhibition
+      notice after §5.1.3 para 107.
+
+  - id: de-er-08-kamera-erfasst-emotionen
+    lang: de
+    category: emotion-recognition
+    kind: regex
+    value: '\b(?:kamera|kameras|sensor|sensoren|dieses gerät) (?:erfasst|erfassen|analysiert|analysieren|zeichnet auf|zeichnen auf) (?:ihre |deine |die )?(?:emotionen|gefühle|mimik|gesichtsausdrücke|gesichtsausdruck)\b'
+    note: >-
+      The physical-space wording, matching the onboarding and entrance examples
+      given after §5.1.3 para 107.
+
+  - id: de-er-09-system-erkennt-emotionen
+    lang: de
+    category: emotion-recognition
+    kind: regex
+    value: '\b(?:dieses system|dieser dienst|diese anwendung|dieses spiel|dieses gerät|diese kabine) (?:erkennt|erfasst|analysiert|misst|wertet) (?:ihre |deine |die )?(?:emotionen|gefühle|stimmung|mimik)\b'
+    note: >-
+      Third-person notice attached to the system rather than the person.
+      §5.1.3 para 107 leaves the means open, so both framings count.
+
+  - id: de-er-10-hinweis-exposition
+    lang: de
+    category: emotion-recognition
+    kind: regex
+    value: '\bsie (?:werden|sind) (?:hier |dabei )?(?:einem|einer) (?:emotionserkennungssystem|system zur emotionserkennung|biometrischen kategorisierungssystem|system zur biometrischen kategorisierung)'
+    note: >-
+      Mirrors the statutory formulation: §5.1.3 para 105 requires informing the
+      person that they are exposed to such a system, which is being operated.
+
+  # --- English --------------------------------------------------------------
+  - id: en-er-01-emotion-recognition
+    lang: en
+    category: emotion-recognition
+    kind: regex
+    value: '\bemotion(?:al)? (?:recognition|detection|inference|analysis)(?: system)?\b'
+    note: >-
+      Names the system directly, the whole of the required content under
+      §5.1.3 para 105.
+
+  - id: en-er-02-emotions-are-detected
+    lang: en
+    category: emotion-recognition
+    kind: regex
+    value: '\byour (?:emotions|feelings|emotional state|emotional states|mood) (?:are|is|will be) (?:being )?(?:detected|recognised|recognized|inferred|analysed|analyzed|assessed|captured|recorded)\b'
+    note: >-
+      Plain-language notice addressed to the person, matching the game-launch
+      pop-up example after §5.1.3 para 107.
+
+  - id: en-er-03-facial-expression-analysed
+    lang: en
+    category: emotion-recognition
+    kind: regex
+    value: '\byour (?:facial expression|facial expressions|face|facial image|facial features) (?:is|are|will be) (?:being )?(?:recorded|captured|analysed|analyzed|scanned|processed)\b'
+    note: >-
+      Names the biometric capture the inference rests on, which is what makes an
+      Article 3(39) system recognisable to the person (§5.1.1 para 101).
+
+  - id: en-er-04-biometric-emotion
+    lang: en
+    category: emotion-recognition
+    kind: regex
+    value: '\bbiometric (?:emotion|emotional|affect) (?:analysis|recognition|detection|inference)\b'
+    note: >-
+      Explicit about the biometric basis — the element separating an
+      Article 3(39) system from text sentiment scoring, see
+      en-nf-06-text-sentiment-only.
+
+  - id: en-er-05-biometric-categorisation
+    lang: en
+    category: emotion-recognition
+    kind: regex
+    value: '\bbiometric (?:categorisation|categorization|classification|profiling|sorting)\b'
+    note: >-
+      The second system type of Article 50(3) (Article 3(40)); §5.1.2 para 104
+      applies the duty to any such system regardless of high-risk status.
+
+  - id: en-er-06-biometric-data-used
+    lang: en
+    category: emotion-recognition
+    kind: regex
+    value: '\byour biometric data (?:is|are|will be) (?:being )?(?:used|processed|collected|analysed|analyzed|captured)\b'
+    note: >-
+      Addressed to the person exposed, the addressee named in §5.1.3 para 106.
+
+  - id: en-er-07-age-gender-from-face
+    lang: en
+    category: emotion-recognition
+    kind: regex
+    value: '\b(?:age|gender|sex) (?:estimation|classification|detection|categorisation|categorization|grouping) (?:from|based on|using|via) (?:your )?(?:face|facial image|facial images|facial scan|camera image|biometric data)\b'
+    note: >-
+      The worked example of biometric categorisation in §5.1.2 para 104 and in
+      the exhibition-entrance notice after §5.1.3 para 107.
+
+  - id: en-er-08-camera-captures-emotions
+    lang: en
+    category: emotion-recognition
+    kind: regex
+    value: '\b(?:camera|cameras|sensor|sensors|this device) (?:captures?|analyses?|analyzes?|records?|reads?) (?:your |the )?(?:emotions|feelings|mood|facial expressions|facial expression)\b'
+    note: >-
+      The physical-space wording of the examples after §5.1.3 para 107.
+
+  - id: en-er-09-system-detects-emotions
+    lang: en
+    category: emotion-recognition
+    kind: regex
+    value: '\bthis (?:system|service|application|game|device|booth|kiosk) (?:detects|recognises|recognizes|infers|analyses|analyzes|measures) (?:your |the )?(?:emotions|feelings|mood|facial expressions)\b'
+    note: >-
+      Third-person framing attached to the system. §5.1.3 para 107 prescribes no
+      particular means, so both framings count.
+
+  - id: en-er-10-exposure-notice
+    lang: en
+    category: emotion-recognition
+    kind: regex
+    value: '\byou (?:are|will be) (?:being )?(?:exposed to|subject to|monitored by) (?:an |a )?(?:emotion recognition|emotion detection|biometric categorisation|biometric categorization|biometric classification)'
+    note: >-
+      Mirrors the statutory formulation of §5.1.3 para 105: the person is
+      informed that they are exposed to such a system, which is being operated.
+
+negative_patterns:
+  # Wordings that look like a label and do not discharge the duty. A hit here
+  # produces AMBIGUOUS -> WARN with the evidence attached, never a verdict:
+  # whether the surrounding context rescues the wording is a human judgement.
+  #
+  # Anything that must stay a hard finding therefore belongs in NEITHER list,
+  # by the same reasoning as in disclosure.de-en.yaml.
+
+  # --- German ---------------------------------------------------------------
+  - id: de-nf-01-nur-maschinenlesbar
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\b(?:c2pa|content credentials|content-credentials|herkunftsmetadaten|provenienzdaten|unsichtbare[ns]? wasserzeichen|die metadaten enthalten)\b'
+    note: >-
+      §6.1.2 para 117 is explicit: deployers cannot rely on the machine-readable
+      marking embedded under Article 50(2), because it is not clear and
+      distinguishable for the person exposed to the content. Pointing at the
+      manifest is therefore the archetypal near-miss — the marking is real, the
+      Article 50(4) label is still missing.
+
+  - id: de-nf-02-pauschale-ki-nutzung
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\b(?:diese (?:website|seite|plattform|app|anwendung)|unser (?:angebot|dienst|service)|unsere (?:redaktion|plattform)|wir) (?:nutzt|nutzen|verwendet|verwenden|setzt|setzen) (?:teilweise |gelegentlich |auch )?(?:ki\b|künstliche intelligenz|ai\b)'
+    note: >-
+      A blanket statement that the site uses AI does not say that *this* image
+      or video was generated. §7.1 para 142 ties the information to the content
+      it concerns, and para 143 to each output.
+
+  - id: de-nf-03-nur-digital-bearbeitet
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\b(?:digital bearbeitet|digital nachbearbeitet|nachbearbeitet|retuschiert|bildbearbeitung|farbkorrigiert)\b'
+    note: >-
+      States that editing happened, not that it was artificial. §6.1.1 para 116
+      keeps minor AI-supported edits — colour correction, noise reduction,
+      cosmetic adjustment — outside the deep fake notion entirely, so this
+      wording settles nothing in either direction.
+
+  - id: de-nf-04-symbolbild
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\b(?:symbolbild|symbolfoto|beispielbild|archivbild|illustration|künstlerische darstellung|nachgestellte szene)\b'
+    note: >-
+      The German picture-credit vocabulary for "this is not the actual scene".
+      It warns against literal reading and says nothing about artificial origin,
+      so it is not the disclosure §6.1.2 para 117 requires.
+
+  - id: de-nf-05-ohne-ki
+    lang: de
+    category: deepfake
+    kind: regex
+    value: '\b(?:ohne (?:den einsatz von )?ki\b|ohne künstliche intelligenz|keine ki (?:verwendet|eingesetzt|genutzt)|ki-frei)\b'
+    note: >-
+      The assertion opposite to a label. Listed because it contains the same
+      words as one, so it deserves a human look rather than being read either
+      way by the machine.
+
+  - id: de-nf-06-stimmungsanalyse-text
+    lang: de
+    category: emotion-recognition
+    kind: regex
+    value: '\b(?:stimmungsanalyse|sentimentanalyse|sentiment-analyse|tonalitätsanalyse|textanalyse) (?:ihrer |ihres |der |des |von )?(?:nachrichten|nachricht|texte|text|bewertungen|kommentare|eingaben|feedbacks)\b'
+    note: >-
+      Sentiment scoring of written text is not an emotion recognition system:
+      Article 3(39), as read in §5.1.1 para 101, requires the inference to be
+      made on the basis of biometric data. A notice about it therefore neither
+      discharges nor triggers the Article 50(3) duty.
+
+  - id: de-nf-07-videoueberwachung
+    lang: de
+    category: emotion-recognition
+    kind: regex
+    value: '\b(?:videoüberwacht|videoüberwachung|kameraüberwachung|dieser bereich wird überwacht|aufzeichnung zu sicherheitszwecken)\b'
+    note: >-
+      A CCTV notice tells people they are filmed. It does not tell them that
+      emotions are inferred or that they are assigned to biometric categories,
+      which is what §5.1.3 para 105 requires the notice to convey.
+
+  # --- English --------------------------------------------------------------
+  - id: en-nf-01-machine-readable-only
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\b(?:c2pa|content credentials|provenance metadata|provenance manifest|invisible watermark|the metadata contains|embedded watermark)\b'
+    note: >-
+      §6.1.2 para 117 rules out relying on the Article 50(2) machine-readable
+      marking to discharge the Article 50(4) duty: it is not clear and
+      distinguishable to the person exposed to the content.
+
+  - id: en-nf-02-blanket-ai-use
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\b(?:this (?:site|website|platform|app|publication)|our (?:service|platform|newsroom|team)|we) (?:uses?|utili[sz]es?|may use|employs?) (?:ai\b|artificial intelligence|generative ai)'
+    note: >-
+      A site-wide statement is not a label on this output. §7.1 para 142 ties
+      the information to the relevant content, §7.2 para 143 to each output.
+
+  - id: en-nf-03-digitally-edited-only
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\b(?:digitally (?:edited|enhanced|retouched|processed)|retouched|post-?processed|colour[- ]corrected|color[- ]corrected)\b'
+    note: >-
+      States that editing happened, not that it was artificial. §6.1.1 para 116
+      places exactly these edits outside the deep fake notion, so the wording
+      decides nothing.
+
+  - id: en-nf-04-illustrative-image
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\b(?:stock (?:photo|image|footage)|file photo|illustrative (?:image|photo|purposes)|for illustration purposes|artist(?:''s|’s)? impression|dramatis[ae]d reconstruction)\b'
+    note: >-
+      The English picture-credit vocabulary for "not the actual scene". Warns
+      against literal reading; says nothing about artificial origin.
+
+  - id: en-nf-05-no-ai-used
+    lang: en
+    category: deepfake
+    kind: regex
+    value: '\b(?:no ai (?:was )?(?:used|involved)|without (?:the use of )?ai\b|ai[- ]free|not ai[- ](?:generated|created))\b'
+    note: >-
+      The assertion opposite to a label, built from the same words. Worth a
+      human look rather than a machine reading in either direction.
+
+  - id: en-nf-06-text-sentiment-only
+    lang: en
+    category: emotion-recognition
+    kind: regex
+    value: '\b(?:sentiment analysis|tone analysis|mood scoring|text analytics) (?:of )?(?:your )?(?:messages|message|reviews|review|text|comments|feedback|tickets)\b'
+    note: >-
+      Sentiment scoring of text is not an Article 3(39) emotion recognition
+      system: §5.1.1 para 101 requires the inference to rest on biometric data.
+
+  - id: en-nf-07-cctv
+    lang: en
+    category: emotion-recognition
+    kind: regex
+    value: '\b(?:cctv|video surveillance|under surveillance|recorded for (?:your )?(?:security|safety) purposes)\b'
+    note: >-
+      A surveillance notice says people are filmed, not that emotions are
+      inferred or biometric categories assigned — the content §5.1.3 para 105
+      requires.

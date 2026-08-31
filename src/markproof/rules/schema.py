@@ -26,6 +26,9 @@ __all__ = [
     "C2paVerifyCheck",
     "Check",
     "DisclosurePatternCheck",
+    "LabelCategory",
+    "LabelPresenceCheck",
+    "LabelScope",
     "ProbeKind",
     "Rule",
     "Rulepack",
@@ -72,6 +75,38 @@ class Position(StrEnum):
     ANYWHERE_IN_FIRST_RESPONSE = "anywhere_in_first_response"
 
 
+class LabelCategory(StrEnum):
+    """Which Article 50 labelling duty a set of label patterns serves.
+
+    Two duties, two vocabularies, and they must not rescue each other: a notice
+    that a room records visitors' facial expressions is a perfectly good
+    Article 50(3) disclosure and says nothing at all about a deep fake.
+    """
+
+    DEEPFAKE = "deepfake"
+    """Art. 50(4) first subparagraph — AI-generated or manipulated image, audio
+    or video content that constitutes a deep fake."""
+
+    EMOTION_RECOGNITION = "emotion-recognition"
+    """Art. 50(3) — deployers of emotion recognition and biometric
+    categorisation systems informing the persons exposed to them."""
+
+
+class LabelScope(StrEnum):
+    """How many of the probed outputs have to carry the label.
+
+    ``EVERY_OUTPUT`` is the default because Guidelines §7.2 para 143 attaches
+    the duty for Article 50(2) and (4) content to *each output* with respect to
+    any person exposed to it — a label on the first image says nothing about the
+    second. ``ANY_OUTPUT`` exists for interfaces where one notice demonstrably
+    covers a whole session, which the same paragraph allows when the person is
+    reasonably likely to perceive it.
+    """
+
+    EVERY_OUTPUT = "every_output"
+    ANY_OUTPUT = "any_output"
+
+
 class Source(BaseModel):
     """One citable source behind a rulepack."""
 
@@ -112,6 +147,41 @@ class DisclosurePatternCheck(BaseModel):
         if v is not None and not v:
             raise ValueError("prompt_ids must not be an empty list; omit the field instead")
         return v
+
+
+class LabelPresenceCheck(BaseModel):
+    """Deterministic pattern match for a perceivable Article 50 label.
+
+    Presence only. Guidelines §6.1.2 para 117 requires the deep fake disclosure
+    to be understandable and perceivable without technical tools, and expressly
+    refuses to let the machine-readable Article 50(2) marking stand in for it —
+    so this check reads the text a person would read. What it cannot read is
+    whether that text is *clear and distinguishable* (§7.1 para 142: position,
+    contrast, whether it can be overlooked), nor whether the content is a deep
+    fake in the first place (§6.1.1 paras 113-116). Both are judgements, which is
+    why rules using this check carry ``severity: warn``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["label-presence"]
+    labels_file: str = Field(min_length=1)
+    """The curated label file, e.g. ``labels.de-en.yaml``.
+
+    Deliberately not called ``patterns_file``: that name is how the loader finds
+    Article 50(1) disclosure files, and a label file validates against a
+    different model. Two names keep a rulepack from silently pointing one check
+    at the other's vocabulary.
+    """
+
+    category: LabelCategory
+    """Which duty this rule is about. Required, with no default: a rule that did
+    not say would be satisfied by whichever notice happened to be on the page."""
+
+    scope: LabelScope = LabelScope.EVERY_OUTPUT
+    min_matches: int = Field(default=1, ge=1)
+    """Distinct patterns that must match *within one output* for it to count as
+    labelled."""
 
 
 class TrustConfig(BaseModel):
@@ -228,7 +298,7 @@ class SynthIdDetectCheck(BaseModel):
 
 #: Discriminated union across every check type this build implements.
 Check = Annotated[
-    DisclosurePatternCheck | C2paVerifyCheck | SynthIdDetectCheck,
+    DisclosurePatternCheck | C2paVerifyCheck | SynthIdDetectCheck | LabelPresenceCheck,
     Field(discriminator="type"),
 ]
 

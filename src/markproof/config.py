@@ -32,6 +32,8 @@ __all__ = [
     "ReportConfig",
     "TargetConfig",
     "TextMarkingConfig",
+    "UiProbeConfig",
+    "ViewportConfig",
     "load_config",
 ]
 
@@ -120,6 +122,102 @@ class HttpChatProbeConfig(BaseModel):
         return self
 
 
+class ViewportConfig(BaseModel):
+    """The rendering box the UI probe fixes before it looks at anything.
+
+    A pinned size is what makes two runs comparable: responsive layouts move a
+    disclosure banner in and out of the fold, and a probe that inherited the
+    CI runner's window would report a different interface on every machine.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    width: int = Field(default=1280, ge=320, le=3840)
+    height: int = Field(default=800, ge=240, le=2160)
+
+
+class UiProbeConfig(BaseModel):
+    """A rendered chat interface to observe.
+
+    The one probe kind that can answer ``before_first_user_message``: an API
+    endpoint never speaks unprompted, a widget does. See ``probes/ui.py``.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str = Field(min_length=1)
+    type: Literal["ui"]
+    url: str = Field(min_length=1)
+    lang: str = "de"
+
+    chat_selector: str | None = None
+    """CSS selector for the widget, or None to read the whole page.
+
+    It defines what counts as *the interface* for the text check, so a notice
+    rendered outside it is not observed. Point it at the container that holds
+    any disclosure the operator relies on — or leave it unset and let the whole
+    page be the evidence.
+    """
+
+    wait_for: str | int | None = None
+    """A CSS selector to wait for, or a number of milliseconds to sit still.
+
+    Real widgets mount asynchronously, so the load event is often too early. A
+    selector is the better instrument — it waits for a fact rather than for a
+    guess about how slow the runner is — and a millisecond value is the escape
+    hatch for interfaces that expose nothing to wait on.
+    """
+
+    viewport: ViewportConfig = Field(default_factory=ViewportConfig)
+    timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+    prompt_id: str = Field(default="ui-initial-view", min_length=1)
+    """Names the observation in the report. Not a prompt: the probe asks
+    nothing, which is precisely what makes the turn a first turn."""
+
+    @property
+    def probe_kind(self) -> ProbeKind:
+        return ProbeKind.UI
+
+    @field_validator("url")
+    @classmethod
+    def _renderable_url(cls, v: str) -> str:
+        # file:// is allowed here and nowhere else: the thing under test is a
+        # rendered document, and a build artefact on disk is a legitimate — and
+        # network-free — target for it.
+        if not v.startswith(("http://", "https://", "file://")):
+            raise ValueError("url must start with http://, https:// or file://")
+        return v
+
+    @field_validator("lang")
+    @classmethod
+    def _supported_lang(cls, v: str) -> str:
+        if v not in SUPPORTED_LANGS:
+            raise ValueError(f"lang {v!r} is not supported (have: {', '.join(SUPPORTED_LANGS)})")
+        return v
+
+    @field_validator("wait_for", mode="before")
+    @classmethod
+    def _not_a_flag(cls, v: object) -> object:
+        # Must run before coercion: bool is an int in Python and pydantic will
+        # happily read `wait_for: true` as a 1 ms pause. That is a mistake worth
+        # naming, not a value worth honouring.
+        if isinstance(v, bool):
+            raise ValueError(
+                "wait_for must be a CSS selector or a number of milliseconds, not a boolean"
+            )
+        return v
+
+    @field_validator("wait_for")
+    @classmethod
+    def _usable_wait(cls, v: str | int | None) -> str | int | None:
+        if isinstance(v, int):
+            if not 0 <= v <= 60_000:
+                raise ValueError("wait_for in milliseconds must be between 0 and 60000")
+        elif isinstance(v, str) and not v.strip():
+            raise ValueError("wait_for must not be blank; omit the field instead")
+        return v
+
+
 class MediaProbeConfig(BaseModel):
     """An image/media generation endpoint to probe."""
 
@@ -160,7 +258,9 @@ class MediaProbeConfig(BaseModel):
 
 #: A probe entry in the config. Discriminated on ``type`` so an unknown probe
 #: kind is a loud config error rather than a silently ignored block.
-ProbeConfig = Annotated[HttpChatProbeConfig | MediaProbeConfig, Field(discriminator="type")]
+ProbeConfig = Annotated[
+    HttpChatProbeConfig | UiProbeConfig | MediaProbeConfig, Field(discriminator="type")
+]
 
 
 class TargetConfig(BaseModel):
