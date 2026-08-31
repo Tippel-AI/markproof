@@ -17,6 +17,7 @@ The module-level object ``app`` is the console-script target declared in
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -32,6 +33,17 @@ from markproof.config import ConfigError, MarkproofConfig, MediaProbeConfig, loa
 from markproof.probes.base import Evidence, ProbeError
 from markproof.probes.http_chat import HttpChatProbe
 from markproof.probes.media import MediaProbe
+from markproof.report.model import build_report
+from markproof.report.sign import (
+    SigningError,
+    generate_keypair,
+    load_private_key,
+    load_public_key,
+    report_from_dict,
+    sign_report,
+    verify_report,
+)
+from markproof.report.summary import render_summary
 from markproof.rules.engine import Finding, Result, evaluate, exit_code_for
 from markproof.rules.schema import Rulepack, load_rulepack
 
@@ -134,6 +146,50 @@ def _collect(config: MarkproofConfig) -> list[Evidence]:
     return evidences
 
 
+def _write_report(
+    report_dir: Path,
+    target: str,
+    rulepack: Rulepack,
+    findings: list[Finding],
+    timestamp: str | None,
+) -> None:
+    """Write report.json and summary.md, signing when a key is configured.
+
+    Signing is opt-in through MARKPROOF_SIGNING_KEY. An unsigned report is still
+    a useful report — it is just not evidence someone else can check — so a
+    missing key is a note, not an error.
+    """
+    report = build_report(target=target, rulepack=rulepack, findings=findings, timestamp=timestamp)
+
+    key_source = os.environ.get("MARKPROOF_SIGNING_KEY", "").strip()
+    if key_source:
+        try:
+            report = sign_report(report, load_private_key(key_source))
+        except SigningError as exc:
+            # Never fall back to writing an unsigned report under a name the
+            # caller asked to have signed: that would look like evidence.
+            err_console.print(f"[bold red]signing failed:[/] {exc}")
+            raise typer.Exit(code=2) from exc
+
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / "report.json"
+    summary_path = report_dir / "summary.md"
+
+    report_path.write_text(
+        json.dumps(report.model_dump(mode="json", exclude_none=True), indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
+    summary_path.write_text(render_summary(report), encoding="utf-8")
+
+    console.print(f"  report written to [cyan]{report_path}[/cyan]")
+    console.print(f"  summary written to [cyan]{summary_path}[/cyan]")
+    if not key_source:
+        console.print(
+            "  [dim]unsigned — set MARKPROOF_SIGNING_KEY to produce verifiable evidence[/dim]"
+        )
+
+
 def _render(findings: list[Finding], target_name: str, rulepack: Rulepack) -> None:
     """Print the findings table and the summary line."""
     table = Table(box=None, pad_edge=False, show_edge=False)
@@ -177,6 +233,17 @@ def run(
         Path | None,
         typer.Option("--json", help="Also write the findings as JSON to this path."),
     ] = None,
+    report_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--report-dir",
+            help="Write report.json and summary.md here (signed if a key is set).",
+        ),
+    ] = None,
+    timestamp: Annotated[
+        str | None,
+        typer.Option("--timestamp", help="Pin the report timestamp (ISO-8601). For tests."),
+    ] = None,
 ) -> None:
     """Probe the target and evaluate it against the rulepack."""
     try:
@@ -185,7 +252,10 @@ def run(
         pattern_sets = _load_pattern_sets(rulepack)
         watermark = _load_watermark(config, config_path)
         evidences = _collect(config)
-    except (ConfigError, ProbeError) as exc:
+    except (ConfigError, ProbeError, SigningError, ValueError) as exc:
+        # ValueError covers the watermark config loader, which validates a
+        # user-supplied path — a wrong path is a configuration mistake and
+        # deserves a sentence, not a traceback.
         err_console.print(f"[bold red]error:[/] {exc}")
         raise typer.Exit(code=2) from exc
 
@@ -196,6 +266,9 @@ def run(
         payload = [f.model_dump(mode="json") for f in findings]
         json_out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         console.print(f"  findings written to [cyan]{json_out}[/cyan]")
+
+    if report_dir is not None:
+        _write_report(report_dir, config.target.name, rulepack, findings, timestamp)
 
     raise typer.Exit(code=exit_code_for(findings))
 
@@ -241,3 +314,66 @@ def rules_schema() -> None:
     """Print the rulepack JSON Schema to stdout."""
     schema = Rulepack.model_json_schema()
     sys.stdout.write(json.dumps(schema, indent=2, sort_keys=True) + "\n")
+
+
+@app.command("verify-report")
+def verify_report_command(
+    report_path: Annotated[Path, typer.Argument(help="Path to report.json.")],
+    key: Annotated[
+        Path | None,
+        typer.Option("--key", help="Public key to verify against (PEM)."),
+    ] = None,
+) -> None:
+    """Check a report's signature — the auditor's command.
+
+    Deliberately separate from ``run``: verifying should need nothing but the
+    report, a public key and this tool, on a machine that never saw the system
+    under test.
+    """
+    try:
+        data = json.loads(report_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        err_console.print(f"[bold red]error:[/] cannot read {report_path}: {exc}")
+        raise typer.Exit(code=2) from exc
+    except ValueError as exc:
+        err_console.print(f"[bold red]error:[/] {report_path} is not valid JSON: {exc}")
+        raise typer.Exit(code=2) from exc
+
+    try:
+        report = report_from_dict(data)
+        public_key = load_public_key(str(key)) if key is not None else None
+    except SigningError as exc:
+        err_console.print(f"[bold red]error:[/] {exc}")
+        raise typer.Exit(code=2) from exc
+
+    valid, message = verify_report(report, public_key)
+    console.print()
+    if valid:
+        console.print(f"  [green]✓[/green] {message}")
+    else:
+        console.print(f"  [bold red]✗[/bold red] {message}")
+    console.print(
+        f"  [dim]{report.target} · {report.rulepack['id']} v{report.rulepack['version']} · "
+        f"{report.run.timestamp}[/dim]"
+    )
+    console.print()
+    raise typer.Exit(code=0 if valid else 1)
+
+
+@app.command()
+def keygen(
+    out_dir: Annotated[
+        Path, typer.Option("--out-dir", help="Where to write the key pair.")
+    ] = Path(),
+) -> None:
+    """Generate an Ed25519 key pair for report signing."""
+    private_path, public_path = generate_keypair(out_dir)
+    console.print()
+    console.print(f"  private key  [cyan]{private_path}[/cyan]  [dim](mode 600)[/dim]")
+    console.print(f"  public key   [cyan]{public_path}[/cyan]")
+    console.print()
+    console.print("  [yellow]Keep the private key out of version control.[/yellow]")
+    console.print("  In CI, put its contents in a secret and expose it as")
+    console.print("  [cyan]MARKPROOF_SIGNING_KEY[/cyan]. Share the public key freely —")
+    console.print("  anyone verifying a report needs it.")
+    console.print()

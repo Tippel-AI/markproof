@@ -1,0 +1,268 @@
+# SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
+# SPDX-License-Identifier: Apache-2.0
+#
+# Dogfooding: run our own GitHub Action, from this checkout, against our own
+# deliberately half-conformant demo endpoint — and assert the verdict.
+#
+# The claim the action makes to a user is "green means the endpoint disclosed
+# and marked, red means it did not". This workflow is where that claim is
+# tested rather than asserted, so the matrix drives the demo-bot into a mode
+# whose answer is known:
+#
+#   DEMO_MODE=pass    conformant everywhere            -> exit 0
+#   DEMO_MODE=nomark  conformant except text marking   -> exit 1 (MPF-T-001)
+#
+# The two modes also split the installer, so one push exercises both paths the
+# action can take: uv when the runner has it, pip when it does not.
+#
+# Pinned action versions, verified against the upstream tag lists on 2026-08-31:
+#   actions/checkout   latest v7.0.1 — major tag v7 exists
+#   actions/cache      latest v6.1.0 — major tag v6 exists
+#   astral-sh/setup-uv latest v10.0.1 — NO v10 major tag, exact version required
+# (setup-python and upload-artifact are pinned inside action/action.yml.)
+
+name: dogfood
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read # only to confirm the report artifact really was uploaded
+
+concurrency:
+  group: dogfood-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEMO_PORT: "8099"
+  # The tokenizer the demo-bot's watermark config names. Pinning the cache
+  # location keeps it out of the runner's home directory and cacheable.
+  HF_HOME: ${{ github.workspace }}/.hf-cache
+  HF_HUB_DISABLE_TELEMETRY: "1"
+
+jobs:
+  dogfood:
+    name: ${{ matrix.mode }} (via ${{ matrix.installer }}) → exit ${{ matrix.expected }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: pass
+            expected: "0"
+            installer: uv
+          - mode: nomark
+            expected: "1"
+            installer: pip
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python (for the demo-bot)
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # Only for the uv half of the matrix. The action itself never installs
+      # uv — it uses what the runner already has, which is exactly the
+      # difference this matrix is here to cover.
+      - name: Set up uv
+        if: matrix.installer == 'uv'
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      # The [synthid] extra pulls torch, and on Linux the default PyPI wheel is
+      # the CUDA build: gigabytes, on a runner with no GPU. uv gets this from
+      # UV_TORCH_BACKEND, which the action sets; pip needs the CPU wheel index
+      # named explicitly.
+      - name: Prefer CPU torch wheels (pip)
+        if: matrix.installer == 'pip'
+        shell: bash
+        run: echo "PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu" >> "$GITHUB_ENV"
+
+      - name: Cache the tokenizer
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.HF_HOME }}
+          key: hf-gpt2-${{ hashFiles('examples/demo-bot/watermark_config.json') }}
+          restore-keys: hf-gpt2-
+
+      - name: Install the demo-bot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv "${RUNNER_TEMP}/demobot-venv"
+          "${RUNNER_TEMP}/demobot-venv/bin/python" -m pip install --disable-pip-version-check \
+            --quiet --upgrade pip
+          "${RUNNER_TEMP}/demobot-venv/bin/python" -m pip install --disable-pip-version-check \
+            --quiet -r examples/demo-bot/requirements.txt
+
+      # Started from examples/demo-bot: uvicorn imports app:app from the working
+      # directory, and the bot serves its image and text fixtures from paths
+      # relative to it.
+      - name: Start the demo-bot (DEMO_MODE=${{ matrix.mode }})
+        working-directory: examples/demo-bot
+        env:
+          DEMO_MODE: ${{ matrix.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          nohup "${RUNNER_TEMP}/demobot-venv/bin/python" -m uvicorn app:app \
+            --host 127.0.0.1 --port "$DEMO_PORT" \
+            > "${RUNNER_TEMP}/demobot.log" 2>&1 &
+          echo "$!" > "${RUNNER_TEMP}/demobot.pid"
+
+      - name: Wait for /health
+        shell: bash
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          set -uo pipefail
+          for _ in $(seq 1 60); do
+            body="$(curl -fsS --max-time 2 "http://127.0.0.1:${DEMO_PORT}/health" 2>/dev/null || true)"
+            if [ -n "$body" ]; then
+              echo "demo-bot up: $body"
+              # A mode mismatch here would quietly invalidate every assertion
+              # below, so it is checked rather than assumed.
+              if printf '%s' "$body" | grep -q "\"demo_mode\":\"${MODE}\""; then
+                exit 0
+              fi
+              echo "::error::demo-bot reports the wrong mode (wanted ${MODE}): ${body}"
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "::error::demo-bot did not answer /health within 60s"
+          cat "${RUNNER_TEMP}/demobot.log" || true
+          exit 1
+
+      # An Ed25519 key generated on the fly, never a committed one. openssl is
+      # on the runner, so this does not need markproof to be installed yet —
+      # which it is not: installing it is the action's job.
+      - name: Generate a throwaway signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/keys"
+          openssl genpkey -algorithm ed25519 -out "${RUNNER_TEMP}/keys/private.pem"
+          openssl pkey -in "${RUNNER_TEMP}/keys/private.pem" -pubout \
+            -out "${RUNNER_TEMP}/keys/public.pem"
+          chmod 600 "${RUNNER_TEMP}/keys/private.pem"
+
+      # The step under test. continue-on-error keeps the job alive when the
+      # action goes red on purpose (nomark), so the assertions below can run —
+      # `outcome` records that it was red, `conclusion` that we tolerated it.
+      - name: markproof
+        id: markproof
+        continue-on-error: true
+        uses: ./action
+        env:
+          MARKPROOF_SIGNING_KEY: ${{ runner.temp }}/keys/private.pem
+          MARKPROOF_INSTALLER: ${{ matrix.installer }}
+        with:
+          config: examples/demo-bot/markproof.yaml
+          report-dir: markproof-report
+          extras: synthid
+          artifact-name: dogfood-${{ matrix.mode }}-${{ matrix.installer }}
+          python-version: "3.12"
+
+      - name: Assert the verdict matches the mode
+        shell: bash
+        env:
+          ACTUAL: ${{ steps.markproof.outputs.exit-code }}
+          EXPECTED: ${{ matrix.expected }}
+          OUTCOME: ${{ steps.markproof.outcome }}
+          MODE: ${{ matrix.mode }}
+        run: |
+          set -euo pipefail
+          echo "DEMO_MODE=${MODE}: markproof exited '${ACTUAL}', step outcome '${OUTCOME}'"
+
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::expected exit ${EXPECTED} for DEMO_MODE=${MODE}, got '${ACTUAL}'"
+            exit 1
+          fi
+
+          # Exit code and step colour have to agree, or a red pipeline is
+          # decoration rather than a gate.
+          case "$EXPECTED" in
+            0) [ "$OUTCOME" = "success" ] || { echo "::error::exit 0 but the step was ${OUTCOME}"; exit 1; } ;;
+            *) [ "$OUTCOME" = "failure" ] || { echo "::error::exit ${EXPECTED} but the step was ${OUTCOME}"; exit 1; } ;;
+          esac
+
+      # The point of the whole milestone: a failed check whose evidence is lost
+      # is worthless, so the red half of the matrix has to leave the same
+      # artefacts behind as the green half.
+      - name: Assert the evidence survived
+        shell: bash
+        env:
+          REPORT: ${{ steps.markproof.outputs.report-path }}
+          SUMMARY: ${{ steps.markproof.outputs.summary-path }}
+        run: |
+          set -euo pipefail
+          for f in "$REPORT" "$SUMMARY"; do
+            if [ ! -s "$f" ]; then
+              echo "::error::missing or empty evidence: ${f}"
+              exit 1
+            fi
+            echo "ok: ${f} ($(wc -c < "$f" | tr -d ' ') bytes)"
+          done
+          "$MARKPROOF_PYTHON" -c 'import json,sys;json.load(open(sys.argv[1]))' "$REPORT"
+          echo "report.json parses"
+
+      - name: Verify the report signature
+        shell: bash
+        env:
+          REPORT: ${{ steps.markproof.outputs.report-path }}
+        run: |
+          set -euo pipefail
+          signed="$("$MARKPROOF_PYTHON" -c \
+            'import json,sys;print(1 if json.load(open(sys.argv[1])).get("signature") else 0)' "$REPORT")"
+          if [ "$signed" != "1" ]; then
+            # Not a failure: the demo config declares no report.sign_key, so an
+            # unsigned report is a legitimate outcome. Verifying one that claims
+            # a signature is not optional, though.
+            echo "::notice::report carries no signature block — skipping verify-report"
+            exit 0
+          fi
+          "$MARKPROOF_BIN" verify-report "$REPORT" --key "${RUNNER_TEMP}/keys/public.pem"
+          echo "signature verified against the throwaway public key"
+
+      # Eventually consistent, so a warning rather than a gate — the files
+      # asserted above are the hard evidence.
+      - name: Confirm the artifact upload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANT: dogfood-${{ matrix.mode }}-${{ matrix.installer }}
+        run: |
+          set -uo pipefail
+          for _ in 1 2 3 4 5 6; do
+            if gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
+                 --jq '.artifacts[].name' 2>/dev/null | grep -qx "$WANT"; then
+              echo "artifact '${WANT}' is present"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::warning::artifact '${WANT}' not listed yet — the run may still be finalising it"
+
+      - name: Demo-bot log
+        if: always()
+        shell: bash
+        run: cat "${RUNNER_TEMP}/demobot.log" || true
+
+      - name: Stop the demo-bot
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          if [ -f "${RUNNER_TEMP}/demobot.pid" ]; then
+            kill "$(cat "${RUNNER_TEMP}/demobot.pid")" 2>/dev/null || true
+          fi
