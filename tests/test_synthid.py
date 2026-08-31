@@ -31,10 +31,31 @@ _MANIFEST = _FIXTURES / "MANIFEST.json"
 #: it skipped, and "too_short" is the only reason it can be.
 _ALIASES = {"skipped": "too_short"}
 
-pytestmark = pytest.mark.skipif(
-    not _MANIFEST.is_file(),
-    reason="text fixtures not generated — run tests/fixtures/text/generate.py",
-)
+
+def _synthid_stack_available() -> bool:
+    """Whether transformers and torch are importable."""
+    try:
+        import torch  # noqa: F401
+        import transformers  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+# Two independent preconditions, reported separately so a skip says which one
+# was missing. The synthid marker keeps the heavy stack out of the per-PR run;
+# a nightly job installs the extra and exercises these.
+pytestmark = [
+    pytest.mark.synthid,
+    pytest.mark.skipif(
+        not _MANIFEST.is_file(),
+        reason="text fixtures not generated — run tests/fixtures/text/generate.py",
+    ),
+    pytest.mark.skipif(
+        not _synthid_stack_available(),
+        reason="needs the synthid extra: pip install 'markproof[synthid]'",
+    ),
+]
 
 
 def _manifest() -> dict[str, Any]:

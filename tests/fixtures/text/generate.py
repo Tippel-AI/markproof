@@ -425,7 +425,7 @@ def mean_g(processor: SynthIDTextWatermarkLogitsProcessor, ids: list[int]) -> fl
     # g is 0/1 longs: sum exactly in integers, divide once. No float accumulation,
     # so the value is bit-identical on every run and every machine.
     total = int(g.sum().item())
-    count = g.shape[1] * g.shape[2]
+    count = int(g.shape[1] * g.shape[2])
     return total / count
 
 

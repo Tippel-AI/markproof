@@ -235,6 +235,7 @@ class TestTextRuleWiring:
         assert "watermark configuration" in text_finding.message
         assert text_finding.detail["outcome"] == "no_config"
 
+    @pytest.mark.synthid
     def test_runs_when_the_config_is_supplied(
         self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
     ) -> None:
@@ -246,6 +247,11 @@ class TestTextRuleWiring:
         fixtures = Path(__file__).resolve().parent / "fixtures" / "text"
         if not (fixtures / "MANIFEST.json").is_file():
             pytest.skip("text fixtures not generated")
+        try:
+            import torch  # noqa: F401
+            import transformers  # noqa: F401
+        except ImportError:
+            pytest.skip("needs the synthid extra")
 
         manifest = _json.loads((fixtures / "MANIFEST.json").read_text())
         config = WatermarkConfig.model_validate(
