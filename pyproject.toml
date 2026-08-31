@@ -1,0 +1,228 @@
+# SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
+# SPDX-License-Identifier: Apache-2.0
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+# ---------------------------------------------------------------------------
+# Project metadata
+#
+# Distribution name  : markproof   (free on PyPI, verified 31.08.2026)
+# Import package     : markproof
+# Console script     : markproof   (same name throughout — no foreign package
+#                                     ships a binary of that name, so there is
+#                                     no entry-point collision to work around)
+#
+# The project was called `klartext` until 31.08.2026 and was renamed over a
+# trademark collision (active EU word mark KLARTEXT in class 9). See
+# DEVELOPMENT_PLAN §1.
+# ---------------------------------------------------------------------------
+[project]
+name = "markproof"
+version = "0.1.0.dev0"
+description = "Deterministic CI checks for EU AI Act Article 50: verify that deployed GenAI endpoints disclose, mark (C2PA / SynthID) and prove it with a signed report."
+readme = "README.md"
+requires-python = ">=3.11"
+
+# PEP 639 license expression. Code is Apache-2.0; the shipped rulepacks and
+# patterns (src/markproof/rulepacks, src/markproof/patterns) are CC-BY-4.0
+# because they are derived from CC-BY-4.0 Commission material. Both texts and
+# the attribution notice travel with every wheel/sdist.
+license = "Apache-2.0 AND CC-BY-4.0"
+license-files = ["LICENSE", "LICENSE-DATA", "NOTICE"]
+
+authors = [{ name = "Lukas Friedrich", email = "lukas.friedrich@tippel.ai" }]
+maintainers = [{ name = "Tippel — Lukas Friedrich", email = "lukas.friedrich@tippel.ai" }]
+
+# The name itself is unambiguous; these keywords carry the topical search
+# (DEVELOPMENT_PLAN §1, M0).
+keywords = [
+    "eu-ai-act",
+    "ai-act",
+    "article-50",
+    "transparency",
+    "c2pa",
+    "content-credentials",
+    "synthid",
+    "watermark",
+    "conformance",
+    "ci",
+]
+
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Legal Industry",
+    "Intended Audience :: System Administrators",
+    "Natural Language :: English",
+    "Natural Language :: German",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
+
+# Core runtime: everything needed for the default output path
+# (json + markdown summary) — no system dependencies, no heavy ML stack.
+dependencies = [
+    "httpx>=0.27,<1.0",            # async HTTP probes, timeouts, HTTP/2
+    "pydantic>=2.7,<3",            # config / rulepack / report schemas
+    "typer>=0.12,<1.0",            # CLI (pulls rich for the console table)
+    "ruamel.yaml>=0.18,<0.20",     # comment-preserving YAML (rulepacks carry refs)
+    "rfc8785==0.1.4",              # JCS canonicalisation — pinned, signature-relevant
+    "cryptography>=43",            # Ed25519 report signature
+    "c2pa-python==0.37.*",         # official CAI bindings; 0.x API churn -> pin minor
+]
+
+[project.optional-dependencies]
+# SynthID text watermark detection. torch is heavy; CPU wheels are enough.
+synthid = [
+    "transformers>=4.46,<6",
+    "torch>=2.4",
+]
+# Portable PDF default: pure Python, zero system dependencies (Auflage A2).
+pdf = [
+    "reportlab>=4.2,<6",
+]
+# Nicer HTML-templated PDF. Needs Pango/cairo/GdkPixbuf — NOT pip-installable.
+# Never in the critical path (Auflage A2).
+pdf-html = [
+    "weasyprint>=62",
+]
+# Rendered chat-widget probes. Downloads browser binaries at runtime.
+ui = [
+    "playwright>=1.47,<2",
+]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "respx>=0.21",         # deterministic httpx fixtures
+    "hypothesis>=6.100",   # evaluator invariants (MPL-2.0, test-only)
+    "mypy>=1.11",
+    "ruff>=0.6",
+    "pre-commit>=3.8",
+]
+
+[project.scripts]
+# Exactly one entry point, named like the distribution.
+markproof = "markproof.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/Tippel-AI/markproof"
+Repository = "https://github.com/Tippel-AI/markproof"
+Issues = "https://github.com/Tippel-AI/markproof/issues"
+Documentation = "https://github.com/Tippel-AI/markproof/tree/main/docs"
+
+# ---------------------------------------------------------------------------
+# Build
+# ---------------------------------------------------------------------------
+[tool.hatch.build.targets.wheel]
+packages = ["src/markproof"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/examples",
+    "/action",
+    "/docs",
+    "/README.md",
+    "/LICENSE",
+    "/LICENSE-DATA",
+    "/NOTICE",
+]
+
+# ---------------------------------------------------------------------------
+# Lint / format
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle
+    "W",
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "C4",   # comprehensions
+    "SIM",  # simplify
+    "PTH",  # pathlib
+    "S",    # bandit
+    "T20",  # no print() outside the CLI renderer
+    "ANN",  # annotations (mypy strict companion)
+    "RUF",
+]
+ignore = [
+    "ANN401",  # allow typing.Any where a third-party 0.x API forces it
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "ANN"]        # assert is the point of a test
+"examples/**" = ["S", "ANN", "T20"] # demo code, not shipped logic
+
+[tool.ruff.lint.isort]
+known-first-party = ["markproof"]
+
+# TODO(M0): SPDX-header presence is enforced by a separate pre-commit hook
+# (reuse lint), not by ruff — see .pre-commit-config.yaml once it exists.
+
+[tool.ruff.format]
+docstring-code-format = true
+
+# ---------------------------------------------------------------------------
+# Types
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+files = ["src", "tests"]
+strict = true
+warn_unreachable = true
+warn_unused_configs = true
+show_error_codes = true
+
+# Third-party packages without (complete) type information.
+[[tool.mypy.overrides]]
+module = [
+    "c2pa.*",
+    "rfc8785.*",
+    "reportlab.*",
+    "weasyprint.*",
+    "transformers.*",
+    "torch.*",
+]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+xfail_strict = true
+markers = [
+    "synthid: needs the [synthid] extra and a cached HF model (nightly, not per-PR)",
+    "ui: needs the [ui] extra and installed Playwright browsers",
+    "e2e: spins up examples/demo-bot",
+    "determinism: asserts byte-identical report output for identical evidence",
+]
+
+[tool.coverage.run]
+source = ["src/markproof"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true

@@ -1,0 +1,110 @@
+markproof
+Copyright 2026 Lukas Friedrich / Tippel, Germany — https://tippel.ai
+
+This product includes software developed at Tippel (https://tippel.ai).
+
+Licensed under the Apache License, Version 2.0 (see LICENSE), with the
+exception of the data portions listed below, which are licensed under the
+Creative Commons Attribution 4.0 International License (see LICENSE-DATA).
+
+
+================================================================================
+1. Dual licensing within this repository
+================================================================================
+
+Apache-2.0 (see LICENSE)
+    src/ (except the directories named below), action/, examples/, tests/
+
+CC-BY-4.0 (see LICENSE-DATA)
+    src/markproof/rulepacks/    versioned rule definitions
+    src/markproof/patterns/     curated disclosure and label phrasings
+    docs/                      project documentation
+
+The data portions are separately licensed because they are derived from
+CC-BY-4.0 material published by the European Commission. Separate licensing
+keeps the attribution chain intact and lets third parties reuse the rulepacks.
+
+
+================================================================================
+2. Attribution for derived CC-BY-4.0 material
+================================================================================
+
+The rulepacks and patterns in this project are derived from, and paraphrase,
+the following works. They do not reproduce their normative text; rules cite
+clause and margin numbers, and the authoritative wording remains with the
+sources. Each rulepack additionally carries its own machine-readable
+"attribution:" field.
+
+  European Commission, "Guidelines on the implementation of the transparency
+  obligations for certain AI systems under Article 50 of the AI Act",
+  published 20 July 2026.
+  https://digital-strategy.ec.europa.eu/en/library/guidelines-transparency-obligations-providers-and-deployers-ai-systems
+  Licensed under CC BY 4.0 (Commission Decision 2011/833/EU).
+
+  European Commission / AI Board, "Code of Practice on Transparency of
+  AI-generated Content", July 2026.
+  https://digital-strategy.ec.europa.eu/en/policies/code-practice-ai-generated-content
+  Licensed under CC BY 4.0 (Commission Decision 2011/833/EU).
+
+  Regulation (EU) 2024/1689 (Artificial Intelligence Act), Official Journal of
+  the European Union. Legislative text; freely reproducible.
+
+Neither the European Commission nor the AI Board endorses this project or the
+way its material has been interpreted here.
+
+No CEN, CENELEC, DIN or prEN standard text is used or embedded in this project.
+
+
+================================================================================
+3. Trademarks
+================================================================================
+
+markproof is not affiliated with, endorsed by, or sponsored by Google DeepMind
+(SynthID), Adobe / the Content Authenticity Initiative (C2PA), or the European
+Commission. All trademarks are the property of their respective owners.
+
+SynthID is a trademark of Google LLC / Google DeepMind. C2PA and Content
+Credentials are marks associated with the Coalition for Content Provenance and
+Authenticity and the Content Authenticity Initiative. These names appear here
+descriptively, to state what this tool verifies. No third-party logo is used in
+this repository, its documentation or its marketing assets, and no component of
+this project is named after a third-party mark.
+
+markproof performs technical conformance testing. It is not legal advice.
+See docs/DISCLAIMER.md.
+
+
+================================================================================
+4. Third-party components
+================================================================================
+
+markproof depends on the following third-party packages at run time. They are
+installed by pip/uv from PyPI and are NOT vendored or redistributed in this
+repository or in the markproof wheel. The complete, generated dependency
+license inventory lives in THIRD_PARTY_LICENSES.md and is refreshed per release.
+
+  c2pa-python  (Content Authenticity Initiative)   MIT OR Apache-2.0
+      Official bindings for c2pa-rs; loads the prebuilt c2pa-rs native library
+      at install time (likewise MIT/Apache-2.0).
+  rfc8785      (Trail of Bits)                     Apache-2.0
+      RFC 8785 (JCS) canonicalisation used for the report signature.
+  cryptography (PyCA)                              Apache-2.0 OR BSD-3-Clause
+  httpx                                            BSD-3-Clause
+  pydantic                                         MIT
+  typer                                            MIT
+  ruamel.yaml                                      MIT
+
+Optional extras, installed only on request:
+
+  transformers (Hugging Face)                      Apache-2.0   [synthid]
+  torch                                            BSD-3-Clause a.o.       [synthid]
+      SynthID text watermark detection. Models are downloaded at run time; no
+      model weights are contained in this repository or in the wheel.
+  reportlab                                        BSD-3-Clause [pdf]
+  weasyprint                                       BSD-3-Clause [pdf-html]
+  playwright                                       Apache-2.0   [ui]
+      Browser binaries are downloaded at run time and are not redistributed.
+
+Development-only tools (not distributed with the package): pytest, mypy, ruff,
+respx, hypothesis (MPL-2.0), pre-commit, uv, and c2patool (Apache-2.0 OR MIT,
+part of contentauth/c2pa-rs) for generating test fixtures.

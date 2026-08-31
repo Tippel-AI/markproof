@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
+# SPDX-License-Identifier: Apache-2.0
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+sdist/
+wheels/
+*.egg-info/
+.eggs/
+.installed.cfg
+MANIFEST
+
+# --- Environments -----------------------------------------------------------
+.venv/
+venv/
+env/
+.python-version
+
+# --- Tooling caches ---------------------------------------------------------
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+site/
+
+# --- Editors / OS -----------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# --- markproof runtime output ------------------------------------------------
+# Reports and evidence are build artefacts, produced per run, never committed.
+report.json
+report.pdf
+artifacts/
+.markproof/
+
+# --- Secrets ----------------------------------------------------------------
+# Signing keys, endpoint tokens and watermark configs come from the environment
+# or CI secrets. If one of these ever appears here, something went wrong.
+.env
+.env.*
+secrets/
+*.pem
+*.key
+watermark_config.json

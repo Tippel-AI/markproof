@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
+# SPDX-License-Identifier: Apache-2.0
+#
+# Per-PR pipeline: lint, types, tests on 3.11/3.12/3.13, plus the determinism
+# gate. Deliberately runs WITHOUT the optional extras — the default path has to
+# stay installable with zero system dependencies (Auflage A2).
+#
+# Sibling workflows arrive later: extras.yml (playwright + synthid, nightly),
+# canary.yml (unpinned c2pa-python/transformers, nightly), conformance-demo.yml
+# (dogfood badge), release.yml (tag -> PyPI via Trusted Publishing),
+# licenses.yml (THIRD_PARTY_LICENSES.md + SPDX headers).
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - name: ruff check
+        run: uv run --python 3.11 --extra dev ruff check .
+      - name: ruff format --check
+        run: uv run --python 3.11 --extra dev ruff format --check .
+
+  typecheck:
+    name: typecheck (mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - name: mypy
+        run: uv run --python 3.11 --extra dev mypy
+
+  test:
+    name: pytest (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - name: pytest
+        run: uv run --python ${{ matrix.python-version }} --extra dev pytest
+
+  determinism:
+    name: determinism (byte-identical report)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      # Placeholder. The real gate runs every golden evidence file through the
+      # full pipeline twice (evaluator + report builder, signature and timestamp
+      # zeroed) and asserts byte equality of the canonical JSON — see
+      # DEVELOPMENT_PLAN.md §7. Nothing to run until M1 lands the evaluator.
+      # TODO(M1): replace with `uv run --extra dev pytest -m determinism`.
+      - name: TODO(M1) — determinism gate not implemented yet
+        run: |
+          echo "::notice title=determinism::Placeholder job — implement with M1 (rule evaluator)."
+          echo "Planned: run each tests/golden/<case> through evaluate() + report build twice"
+          echo "with signature and timestamp zeroed, then assert byte-identical JSON."
