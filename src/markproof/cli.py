@@ -54,8 +54,10 @@ from markproof.report.sign import (
 )
 from markproof.report.summary import render_summary
 from markproof.rules.engine import (
+    ConfigurationRequiredError,
     Finding,
     Result,
+    UnsupportedCheckError,
     combine,
     evaluate,
     exit_code_for,
@@ -103,6 +105,24 @@ def main(
     ] = False,
 ) -> None:
     """markproof — Article 50 conformance checks for live endpoints."""
+
+
+def _readable(exc: Exception) -> str:
+    """A sentence for a stranger, not a repr.
+
+    ``KeyError`` stringifies to its quoted argument, so a missing pattern file
+    would print as ``'disclosure.de-en.yaml'`` with no verb — accurate and
+    useless. The SynthID case gets the install command attached, because "not
+    available in this build" is only actionable if you know what to install.
+    """
+    text = exc.args[0] if exc.args else str(exc)
+    message = str(text).strip()
+    if "synthid" in message.lower() or "transformers" in message.lower():
+        message += (
+            "\n  Install the optional detector: pip install 'markproof[synthid]'\n"
+            "  Or drop the text-marking rule from the rulepack if you do not watermark text."
+        )
+    return message
 
 
 def _resolve_rulepack(name: str) -> Path:
@@ -321,17 +341,27 @@ def run(
         label_sets = _load_label_sets(rulepack)
         watermark = _load_watermark(config, config_path)
         evidences, probe_failures = _collect(config)
+        findings = combine(
+            evaluate(
+                rulepack, evidences, pattern_sets, watermark, label_sets, config.applicability
+            ),
+            probe_failures,
+        )
     except (ConfigError, SigningError, ValueError) as exc:
         # ValueError covers the watermark config loader, which validates a
         # user-supplied path — a wrong path is a configuration mistake and
         # deserves a sentence, not a traceback.
         err_console.print(f"[bold red]error:[/] {exc}")
         raise typer.Exit(code=2) from exc
-
-    findings = combine(
-        evaluate(rulepack, evidences, pattern_sets, watermark, label_sets, config.applicability),
-        probe_failures,
-    )
+    except (ConfigurationRequiredError, UnsupportedCheckError, KeyError) as exc:
+        # Evaluation used to sit outside this block, so a rulepack asking for a
+        # check this build cannot perform — the SynthID extra missing, most
+        # commonly — reached the user as a traceback and exit 1. Exit 1 is this
+        # tool's word for "a check failed". A pipeline could not tell "your
+        # endpoint is not compliant" from "markproof fell over", which is exactly
+        # the ambiguity probe_failure_finding() exists to prevent one layer down.
+        err_console.print(f"[bold red]error:[/] {_readable(exc)}")
+        raise typer.Exit(code=2) from exc
     _render(findings, config.target.name, rulepack)
 
     if json_out is not None:
