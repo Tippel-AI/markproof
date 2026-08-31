@@ -103,3 +103,18 @@ def rulepack(chat_check: DisclosurePatternCheck) -> Rulepack:
             )
         ],
     )
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """``--update-golden`` rewrites the reviewed reports instead of asserting them.
+
+    Deliberately awkward to reach: a golden file states what the tool considers
+    conformant, so refreshing one is a decision that belongs in a diff someone
+    reads, not a reflex when a test goes red.
+    """
+    parser.addoption(
+        "--update-golden",
+        action="store_true",
+        default=False,
+        help="Rewrite tests/golden/*/expected_report.json from the current behaviour.",
+    )

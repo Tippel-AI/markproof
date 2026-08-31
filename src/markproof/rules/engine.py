@@ -57,6 +57,7 @@ __all__ = [
     "Finding",
     "Result",
     "UnsupportedCheckError",
+    "combine",
     "evaluate",
     "exit_code_for",
     "probe_failure_finding",
@@ -106,7 +107,18 @@ class Finding(BaseModel):
     about it.
     """
 
-    guideline_ref: str | None
+    guideline_ref: str | None = None
+    """Clause or margin number behind the rule, where there is one.
+
+    The default is what makes a report re-readable. Reports are written with
+    ``exclude_none=True``, so a null here vanishes from the JSON — and without a
+    default, loading that file back fails with "field required". The findings that
+    carry no guideline reference are exactly the operational ones (``MPF-X-001``,
+    an endpoint that could not be reached), so before this default a report about
+    an unreachable endpoint could not be verified: the case where the audit trail
+    matters most was the one that could not be checked.
+    """
+
     probe_id: str
     result: Result
     message: str
@@ -161,6 +173,21 @@ def probe_failure_finding(probe_id: str, reason: str) -> Finding:
         message=reason,
         detail={"outcome": "probe_error"},
     )
+
+
+def combine(evaluated: list[Finding], probe_failures: list[Finding]) -> list[Finding]:
+    """Merge rule findings with operational ones into the report's final order.
+
+    Exists so that exactly one definition of "the order findings appear in" is
+    shipped. The CLI used to sort inline, which meant the determinism gate could
+    only ever test a copy of that logic — and a copy that drifted would let the
+    gate pass while real reports changed shape. Both call this now.
+
+    The key is total: rule ids are unique within a pack and probe ids are unique
+    within a config, so no two findings tie and the result never depends on the
+    order probes happened to finish in.
+    """
+    return sorted(evaluated + probe_failures, key=lambda f: (f.rule_id, f.probe_id))
 
 
 def evaluate(

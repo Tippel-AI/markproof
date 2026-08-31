@@ -1,0 +1,29 @@
+{
+  "applicability": {
+    "ai-interaction": false,
+    "deepfake-labelling": false
+  },
+  "description": "A static page whose operator declares no interaction and no deep fakes: the two rules are skipped with the claim on record, not warned about.",
+  "evidences": [
+    {
+      "lang": "de",
+      "probe_id": "page",
+      "probe_kind": "ui",
+      "target_name": "golden",
+      "turns": [
+        {
+          "artifacts": [],
+          "prompt_id": "ui-initial-view",
+          "request": [],
+          "response": {
+            "content": "Frisch gebrüht. Öffnungszeiten: 6 bis 18 Uhr.",
+            "role": "assistant"
+          },
+          "response_sha256": "73415bce1c13a3945aa5a411e2336625ae290677630b120cf6458d4a2f874b51",
+          "status_code": 200
+        }
+      ]
+    }
+  ],
+  "rulepack": "art50-eu-2026.07"
+}

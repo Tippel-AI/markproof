@@ -56,6 +56,7 @@ from markproof.report.summary import render_summary
 from markproof.rules.engine import (
     Finding,
     Result,
+    combine,
     evaluate,
     exit_code_for,
     probe_failure_finding,
@@ -325,10 +326,9 @@ def run(
         err_console.print(f"[bold red]error:[/] {exc}")
         raise typer.Exit(code=2) from exc
 
-    findings = sorted(
-        evaluate(rulepack, evidences, pattern_sets, watermark, label_sets, config.applicability)
-        + probe_failures,
-        key=lambda f: (f.rule_id, f.probe_id),
+    findings = combine(
+        evaluate(rulepack, evidences, pattern_sets, watermark, label_sets, config.applicability),
+        probe_failures,
     )
     _render(findings, config.target.name, rulepack)
 
