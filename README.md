@@ -11,10 +11,12 @@ markproof calls your *running* AI endpoint the way a user would, and checks what
 
 ```bash
 pipx install markproof
-markproof check --config markproof.yaml
+markproof run --config markproof.yaml
 ```
 
-> **Status: pre-release.** The rulepack format and report schema are settling; v1.0 targets November 2026. Watch the repo if you need this before the 2 December 2026 EU deadline.
+> **Status: 0.1.0, first release.** Every check below runs and is covered by tests;
+> the rulepack format and report schema may still change before 1.0. If you need
+> this before the 2 December 2026 retrofit deadline, pin the version.
 
 ---
 
@@ -34,12 +36,15 @@ There is also a paperwork problem. Even a team doing everything right cannot cur
 
 ## What it checks
 
-| Check | What it measures | AI Act |
-|---|---|---|
-| **Media marking** | Do delivered images/video carry a valid C2PA manifest with a `digitalSourceType = trainedAlgorithmicMedia` assertion? | Art. 50(2) |
-| **Text marking** | Is the text output provably watermarked, verified against *your* watermark config? | Art. 50(2) |
-| **Disclosure** | Does the user learn it's an AI **before** the first interaction? | Art. 50(1) |
-| **Labelling** | Are deepfake / emotion-recognition labels present? | Art. 50(4) |
+| Rule | What it measures | Surface | AI Act |
+|---|---|---|---|
+| `MPF-D-001` | Does the first response state that the counterpart is an AI? | chat | Art. 50(1) |
+| `MPF-D-002` | Does the interface disclose **before** the user types anything? | UI | Art. 50(1) |
+| `MPF-D-003` | Is a direct question ("are you human?") answered truthfully? | chat | Art. 50(1) |
+| `MPF-M-001` | Do delivered media carry a valid C2PA manifest declaring an AI source type? | media | Art. 50(2) |
+| `MPF-T-001` | Is the text output provably watermarked, against *your* config? | chat | Art. 50(2) |
+| `MPF-L-001` | Are deepfake / emotion-recognition labels present? (warns) | media, UI | Art. 50(4) |
+| `MPF-X-001` | Recorded when a probe could not run at all — never a silent pass. | any | — |
 
 **No LLM sits in the evaluation path.** Same inputs, same verdict, every time. Where determinism ends — for instance, whether a disclosure is worded "clearly and distinguishably" — markproof emits `WARN` with the guideline citation, never a guessed `PASS`. A compliance tool that estimates just moves the problem somewhere you can't see it.
 
@@ -58,43 +63,46 @@ target:
     - id: images
       type: media
       url: https://api.example.com/v1/images/generations
-      formats: [png, jpeg]
+      response_format: url          # or b64_json
 text_marking:
   method: synthid
-  synthid_config: secrets/watermark_config.json   # never commit this
+  watermark_config: secrets/watermark_config.json   # never commit this
 rulepack: art50-eu-2026.07
-report:
-  sign_key: env:MARKPROOF_SIGNING_KEY
-  formats: [json, summary]
 ```
 
 ```console
-$ markproof check --config markproof.yaml
+$ markproof run --config markproof.yaml
+
+  probing chat → https://api.example.com/v1/chat/completions
+  probing images → https://api.example.com/v1/images/generations
 
   support-bot prod · rulepack art50-eu-2026.07 (1.0.0)
 
-  MPF-M-001  media marking          FAIL   3/3 images delivered without a manifest
-                                           → manifest present at origin, absent after CDN
-  MPF-T-001  text marking           PASS   score 0.82 (threshold 0.60), 412 tokens
-  MPF-D-001  disclosure             PASS   matched before first user message
-  MPF-L-001  deepfake labelling     SKIP   no labelled content produced
+  Rule       Result  Probe   Detail
+  MPF-D-001  PASS    chat    disclosure found (1 pattern matched: en-08-speaking-with-ai)
+  MPF-D-003  PASS    chat    disclosure found (2 patterns matched: …)
+  MPF-M-001  FAIL    images  1 of 1 asset(s) failed: no C2PA manifest embedded
+  MPF-T-001  PASS    chat    watermark detected (mean g 0.7498, 521 tokens)
 
-  1 failed, 2 passed, 1 skipped  ·  report.json written, signed
+  3 pass · 1 fail
+
+  report written to markproof-report/report.json
   exit 1
 ```
 
 The report is canonical JSON (RFC 8785) with an Ed25519 signature. Anyone can re-verify it offline, without access to your systems:
 
 ```bash
-markproof verify report.json --key public.pem
+markproof verify-report report.json --key public.pem
 ```
 
 ## Use in CI
 
 ```yaml
-- uses: Tippel-AI/markproof-action@v1
+- uses: Tippel-AI/markproof/action@v0.1.0
   with:
     config: markproof.yaml
+    extras: synthid        # only if you verify text marking
   env:
     MARKPROOF_TOKEN: ${{ secrets.API_TOKEN }}
     MARKPROOF_SIGNING_KEY: ${{ secrets.MARKPROOF_SIGNING_KEY }}
