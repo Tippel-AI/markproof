@@ -185,9 +185,7 @@ def _collect(config: MarkproofConfig) -> tuple[list[Evidence], list[Finding]]:
             elif isinstance(probe_config, HttpChatProbeConfig):
                 evidences.append(HttpChatProbe(probe_config).collect())
             else:  # pragma: no cover - the config union makes this unreachable
-                raise ConfigError(
-                    f"probe {probe_config.id!r} has a type this build cannot run"
-                )
+                raise ConfigError(f"probe {probe_config.id!r} has a type this build cannot run")
         except ProbeError as exc:
             console.print(f"    [bold red]unreachable:[/] {exc}")
             failures.append(probe_failure_finding(probe_config.id, str(exc)))
