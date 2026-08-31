@@ -10,13 +10,16 @@ SPDX-License-Identifier: Apache-2.0
 markproof calls your *running* AI endpoint the way a user would, and checks what actually arrives: is the image still carrying its C2PA manifest, is the text still watermarked, does the bot say it's a bot? Deterministic pass/fail, a signed evidence report, and an exit code your pipeline can gate on.
 
 ```bash
-pipx install markproof
+pipx install git+https://github.com/Tippel-AI/markproof
 markproof run --config markproof.yaml
 ```
 
-> **Status: 0.1.0, first release.** Every check below runs and is covered by tests;
-> the rulepack format and report schema may still change before 1.0. If you need
-> this before the 2 December 2026 retrofit deadline, pin the version.
+> **Status: unreleased.** Not on PyPI yet, so install from git as above. Every check
+> in the table below runs against a live endpoint and is covered by tests, but the
+> rulepack format and the report schema will still change before 1.0 — treat a
+> report produced today as evidence about today, not as a stable artefact. The
+> first tagged release, `pipx install markproof`, and a versioned action reference
+> land together ([#1](https://github.com/Tippel-AI/markproof/issues/1)).
 
 ---
 
@@ -67,6 +70,10 @@ applicable and give markproof nothing to check it with, and you get a warning
 instead of a silent skip. "We mark our text", "nothing was checked" and a green
 build is exactly the failure this tool exists to remove.
 
+The three rules with a **UI** or **page** surface drive a real browser, so they need
+the optional extra and its browser binaries — `pipx install "markproof[ui]"` followed
+by `playwright install chromium`. The base install covers everything else.
+
 **No LLM sits in the evaluation path.** Same inputs, same verdict, every time. Where determinism ends — for instance, whether a disclosure is worded "clearly and distinguishably" — markproof emits `WARN` with the guideline citation, never a guessed `PASS`. A compliance tool that estimates just moves the problem somewhere you can't see it.
 
 ## Example
@@ -98,27 +105,38 @@ rulepack: art50-eu-2026.07
 ```
 
 ```console
-$ markproof run --config markproof.yaml
+$ cd examples/demo-bot && DEMO_MODE=fail uvicorn app:app --port 8099 &
+$ markproof run --config markproof.yaml --report-dir markproof-report
 
-  probing chat → https://api.example.com/v1/chat/completions
-  probing images → https://api.example.com/v1/images/generations
+  probing chat → http://127.0.0.1:8099/v1/chat/completions
+  probing images → http://127.0.0.1:8099/v1/images/generations
 
-  support-bot prod · rulepack art50-eu-2026.07 (1.0.0)
+  demo-bot · rulepack art50-eu-2026.07 (1.0.0)
 
-  Rule       Result  Probe   Detail
-  MPF-D-001  PASS    chat    disclosure found (1 pattern matched: en-08-talking-to-ai)
-  MPF-D-003  PASS    chat    disclosure found (2 patterns matched: …)
-  MPF-L-001  SKIP    article not applicable — the target declares no
-                     deepfake-labelling obligation (Art. 50(4))
-  MPF-M-001  FAIL    images  1 of 1 asset(s) failed: no C2PA manifest embedded
-  MPF-T-001  PASS    chat    watermark detected (mean g 0.7498, 521 tokens)
+Rule       Result  Probe   Detail
+MPF-D-001  FAIL    chat    no AI disclosure found in the responses in scope
+MPF-D-003  FAIL    chat    no AI disclosure found in the responses in scope
+MPF-L-001  WARN    images  no deepfake label found in the perceivable text
+MPF-M-001  FAIL    images  1 of 1 asset(s) failed: no C2PA manifest embedded in
+                           the delivered bytes
+MPF-T-001  SKIP    chat    18 tokens is below the 100 needed for a meaningful
+                           score — the detector's confidence grows with length,
+                           and a short sample would be noise dressed as a
+                           verdict
 
-  3 pass · 1 fail · 1 skipped
-  declared out of scope: deepfake-labelling
+  3 fail · 1 warn · 1 skip
 
   report written to markproof-report/report.json
-  exit 1
+  summary written to markproof-report/summary.md
+  unsigned — set MARKPROOF_SIGNING_KEY to produce verifiable evidence
+
+$ echo $?
+1
 ```
+
+That is captured output, not a mock-up, and you can reproduce it: [`examples/demo-bot`](examples/demo-bot) is a deliberately non-conformant FastAPI bot with four modes. Run it with `DEMO_MODE=pass` and the same command exits 0.
+
+Two things worth noticing. `MPF-T-001` **skips** rather than guessing: an 18-token reply cannot carry a watermark score worth reporting, and saying so is the honest answer. `MPF-L-001` **warns** rather than failing, because whether content is a deep fake at all is a judgement no pattern match can make.
 
 The report is canonical JSON (RFC 8785) with an Ed25519 signature. Anyone can re-verify it offline, without access to your systems:
 
@@ -129,16 +147,19 @@ markproof verify-report report.json --key public.pem
 ## Use in CI
 
 ```yaml
-- uses: Tippel-AI/markproof/action@v0.1.0
+- uses: Tippel-AI/markproof/action@main   # a versioned tag follows the first release
   with:
     config: markproof.yaml
     extras: synthid        # only if you verify text marking
+                           # add `ui` for the rendered-interface rules
   env:
     MARKPROOF_TOKEN: ${{ secrets.API_TOKEN }}
     MARKPROOF_SIGNING_KEY: ${{ secrets.MARKPROOF_SIGNING_KEY }}
 ```
 
-The default output path is signed JSON plus a job summary — no system dependencies. PDF is opt-in (`pip install "markproof[pdf]"`).
+The output is signed JSON plus a job summary — no system dependencies, so this path
+works on any runner. (A PDF renderer exists in the source but is not yet wired to the
+CLI: [#21](https://github.com/Tippel-AI/markproof/issues/21).)
 
 ## Related projects
 
@@ -200,4 +221,4 @@ Code is Apache-2.0. Rulepacks, patterns, prompt sets, and documentation are CC-B
 
 ---
 
-Built by [Lukas Friedrich](https://tippel.ai) at Tippel, who builds production AI systems that can prove what they did. Same idea, different substrate: [ruleproof](https://github.com/Tippel-AI/ruleproof) proves detection rules against the real parser; markproof proves content marking against the real endpoint.
+Built by [Lukas Friedrich](https://tippel.ai) at Tippel, who builds production AI systems that can prove what they did — which is the same reason this one exists: content marking is only worth anything if it survives to the endpoint a user actually reaches, and nothing checks that today.
