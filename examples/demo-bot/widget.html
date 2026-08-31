@@ -1,0 +1,403 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
+  SPDX-License-Identifier: Apache-2.0
+
+  Static test target for the markproof UI probe (M5).
+
+  Everything is inline — no external CSS, fonts, scripts or images — so the page
+  renders identically from a file:// URL with the network switched off. That is
+  a requirement, not a convenience: the probe's job is to observe a rendered
+  interface, and a fixture that needs a CDN would make the test suite depend on
+  someone else's uptime.
+
+  Query parameters
+  ----------------
+    disclosure=yes   a notice is visible before the user types anything
+                     -> MPF-D-002 should PASS
+    disclosure=no    no visible notice; the widget nonetheless *contains* the
+                     disclosure sentence in a display:none paragraph
+                     -> MPF-D-002 should WARN, and the probe must not be fooled
+                        by the hidden node. A notice the user cannot read is not
+                        a notice.
+    disclosure=late  no visible notice; the disclosure lives in an inert
+                     <template> and is only inserted after the user has sent a
+                     message -> MPF-D-002 should WARN. This is the case the rule
+                     exists for: Article 50(1) locates the disclosure *before*
+                     the first interaction, so arriving second is arriving late.
+    lang=de|en       wording of the widget (default: de)
+    delay=<ms>       mount the widget only after this many milliseconds, the way
+                     a real chat widget boots asynchronously (default: 0).
+                     Exercises the probe's `wait_for`.
+
+  The banner fades in over 600 ms unless the client asks for reduced motion.
+  The probe sets prefers-reduced-motion: reduce, so it captures the settled
+  state instead of a half-transparent frame.
+-->
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>markproof — Demo-Widget</title>
+    <style>
+      :root {
+        --ink: #14181f;
+        --muted: #5c6673;
+        --line: #d8dee6;
+        --bot: #eef2f7;
+        --user: #dce9fb;
+        --banner: #fff4d6;
+        --banner-line: #e3c46a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 32px;
+        background: #f7f9fc;
+        color: var(--ink);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+      /* Deliberately free of any disclosure wording: when the probe runs
+         without a chat_selector it reads the whole page, and an explanatory
+         header that happened to match a curated pattern would hand the fixture
+         a pass it never earned. */
+      .page-header {
+        max-width: 720px;
+        margin: 0 auto 24px;
+      }
+
+      .page-header h1 {
+        font-size: 18px;
+        margin: 0 0 8px;
+      }
+
+      .hint {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 4px 0;
+      }
+
+      code {
+        background: #e8edf4;
+        border-radius: 3px;
+        padding: 1px 4px;
+        font-size: 12px;
+      }
+
+      .widget {
+        max-width: 720px;
+        margin: 0 auto;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+
+      .widget-head {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--line);
+        font-weight: 600;
+      }
+
+      .mount {
+        padding: 16px;
+      }
+
+      .banner {
+        margin: 0 0 14px;
+        padding: 10px 12px;
+        background: var(--banner);
+        border: 1px solid var(--banner-line);
+        border-radius: 6px;
+        font-size: 14px;
+        animation: fade-in 600ms ease-out both;
+      }
+
+      @keyframes fade-in {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .banner {
+          animation: none;
+        }
+      }
+
+      .transcript {
+        list-style: none;
+        margin: 0 0 14px;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .msg {
+        max-width: 80%;
+        padding: 9px 12px;
+        border-radius: 10px;
+        background: var(--bot);
+      }
+
+      .msg.user {
+        align-self: flex-end;
+        background: var(--user);
+      }
+
+      .composer {
+        display: flex;
+        gap: 8px;
+      }
+
+      .composer input {
+        flex: 1;
+        padding: 9px 11px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        font: inherit;
+      }
+
+      .composer button {
+        padding: 9px 16px;
+        border: 0;
+        border-radius: 6px;
+        background: var(--ink);
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .pending {
+        margin: 0;
+        padding: 16px;
+        color: var(--muted);
+      }
+
+      /* The trap. `display: none` keeps the text in the DOM and out of every
+         rendering of the page — innerText skips it, a human never reads it.
+         A probe that scraped innerHTML would call this a disclosure. */
+      .dom-only {
+        display: none;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+
+  <body>
+    <header class="page-header">
+      <h1>markproof — Demo-Widget</h1>
+      <p class="hint">
+        Statisches Testziel für die UI-Probe. Parameter:
+        <code>disclosure=yes|no|late</code>, <code>lang=de|en</code>,
+        <code>delay=&lt;ms&gt;</code>.
+      </p>
+      <p class="hint" id="mode-line"></p>
+    </header>
+
+    <section id="chat-widget" class="widget">
+      <div class="widget-head" id="widget-head">Demo-Shop</div>
+      <p class="pending" id="pending">…</p>
+      <div class="mount" id="mount" hidden></div>
+
+      <!-- Present in every rendering, visible in none. Removed by the script
+           unless disclosure=no, so the trap is armed in exactly one mode. -->
+      <p class="dom-only" id="hidden-disclosure-de">
+        Hinweis: Sie chatten gerade mit einer KI. Dieser Absatz ist per CSS ausgeblendet.
+      </p>
+      <p class="dom-only" id="hidden-disclosure-en">
+        Notice: you are currently chatting with an AI. This paragraph is hidden with CSS.
+      </p>
+    </section>
+
+    <!-- Template content is inert: it is parsed, it is in the document, and it
+         renders nowhere until something clones it. -->
+    <template id="late-reply-de">
+      <li class="msg bot">
+        Zur Information: Sie chatten gerade mit einer KI, nicht mit einem Menschen.
+      </li>
+    </template>
+    <template id="late-reply-en">
+      <li class="msg bot">For the record: you are chatting with an AI, not with a human.</li>
+    </template>
+
+    <script>
+      (function () {
+        "use strict";
+
+        var TEXT = {
+          de: {
+            head: "Demo-Shop",
+            banner:
+              "Hinweis: Sie chatten gerade mit einer KI. Ihre Nachrichten werden automatisiert beantwortet.",
+            openingDisclosed:
+              "Guten Tag! Ich bin ein KI-Assistent des Demo-Shops. Wie kann ich Ihnen helfen?",
+            openingPlain: "Guten Tag! Wie kann ich Ihnen heute weiterhelfen?",
+            replyPlain: "Danke für Ihre Nachricht. Das ist eine statische Demo-Antwort.",
+            placeholder: "Nachricht eingeben…",
+            send: "Senden",
+            label: "Nachricht",
+            pending: "Widget wird geladen…",
+            mode: "Modus: disclosure=%m, lang=%l, delay=%dms",
+          },
+          en: {
+            head: "Demo Shop",
+            banner:
+              "Notice: you are currently chatting with an AI. Replies are generated automatically.",
+            openingDisclosed:
+              "Hello! I am an AI assistant for the demo shop. How can I help you?",
+            openingPlain: "Hello! How can I help you today?",
+            replyPlain: "Thanks for your message. This is a static demo reply.",
+            placeholder: "Type a message…",
+            send: "Send",
+            label: "Message",
+            pending: "Loading widget…",
+            mode: "Mode: disclosure=%m, lang=%l, delay=%dms",
+          },
+        };
+
+        var params = new URLSearchParams(window.location.search);
+
+        var mode = params.get("disclosure") || "yes";
+        if (["yes", "no", "late"].indexOf(mode) === -1) {
+          mode = "yes";
+        }
+
+        var lang = params.get("lang") === "en" ? "en" : "de";
+        var t = TEXT[lang];
+
+        var delay = parseInt(params.get("delay") || "0", 10);
+        if (!isFinite(delay) || delay < 0) {
+          delay = 0;
+        }
+
+        document.documentElement.lang = lang;
+        document.documentElement.dataset.disclosure = mode;
+        document.getElementById("widget-head").textContent = t.head;
+        document.getElementById("mode-line").textContent = t.mode
+          .replace("%m", mode)
+          .replace("%l", lang)
+          .replace("%d", String(delay));
+
+        // Arm the hidden-node trap only for disclosure=no; drop the paragraph
+        // for the other language in every mode so the DOM says exactly one
+        // thing.
+        var keepHidden = mode === "no" ? "hidden-disclosure-" + lang : null;
+        ["hidden-disclosure-de", "hidden-disclosure-en"].forEach(function (id) {
+          if (id !== keepHidden) {
+            var node = document.getElementById(id);
+            if (node) {
+              node.remove();
+            }
+          }
+        });
+
+        var pending = document.getElementById("pending");
+        pending.textContent = t.pending;
+
+        function render() {
+          var mount = document.getElementById("mount");
+
+          if (mode === "yes") {
+            var banner = document.createElement("p");
+            banner.className = "banner";
+            banner.id = "banner";
+            banner.textContent = t.banner;
+            mount.appendChild(banner);
+          }
+
+          var transcript = document.createElement("ol");
+          transcript.className = "transcript";
+          transcript.id = "transcript";
+
+          var opening = document.createElement("li");
+          opening.className = "msg bot";
+          opening.id = "opening";
+          opening.textContent = mode === "yes" ? t.openingDisclosed : t.openingPlain;
+          transcript.appendChild(opening);
+          mount.appendChild(transcript);
+
+          var form = document.createElement("form");
+          form.className = "composer";
+          form.id = "composer";
+
+          var label = document.createElement("label");
+          label.className = "sr-only";
+          label.setAttribute("for", "prompt");
+          label.textContent = t.label;
+
+          var input = document.createElement("input");
+          input.type = "text";
+          input.id = "prompt";
+          input.name = "prompt";
+          input.autocomplete = "off";
+          input.placeholder = t.placeholder;
+
+          var button = document.createElement("button");
+          button.type = "submit";
+          button.id = "send";
+          button.textContent = t.send;
+
+          form.appendChild(label);
+          form.appendChild(input);
+          form.appendChild(button);
+          mount.appendChild(form);
+
+          form.addEventListener("submit", function (event) {
+            event.preventDefault();
+            var value = input.value.trim();
+            if (!value) {
+              return;
+            }
+            input.value = "";
+
+            var userMsg = document.createElement("li");
+            userMsg.className = "msg user";
+            userMsg.textContent = value;
+            transcript.appendChild(userMsg);
+
+            // The late disclosure: correct wording, wrong moment.
+            if (mode === "late") {
+              var template = document.getElementById("late-reply-" + lang);
+              transcript.appendChild(template.content.cloneNode(true));
+              return;
+            }
+
+            var botMsg = document.createElement("li");
+            botMsg.className = "msg bot";
+            botMsg.textContent = t.replyPlain;
+            transcript.appendChild(botMsg);
+          });
+
+          pending.remove();
+          mount.hidden = false;
+        }
+
+        if (delay > 0) {
+          window.setTimeout(render, delay);
+        } else {
+          render();
+        }
+      })();
+    </script>
+  </body>
+</html>

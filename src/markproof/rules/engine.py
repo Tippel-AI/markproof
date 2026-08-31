@@ -25,6 +25,12 @@ from markproof.checks.disclosure import (
     PatternSet,
     check_disclosure,
 )
+from markproof.checks.labels import (
+    LabelOutcome,
+    LabelPatternSet,
+    LabelResult,
+    check_labels,
+)
 from markproof.checks.synthid import (
     SynthIdOutcome,
     SynthIdResult,
@@ -35,6 +41,7 @@ from markproof.probes.base import Evidence
 from markproof.rules.schema import (
     C2paVerifyCheck,
     DisclosurePatternCheck,
+    LabelPresenceCheck,
     Rule,
     Rulepack,
     Severity,
@@ -149,6 +156,7 @@ def evaluate(
     evidences: list[Evidence],
     pattern_sets: dict[str, PatternSet],
     watermark_config: WatermarkConfig | None = None,
+    label_sets: dict[str, LabelPatternSet] | None = None,
 ) -> list[Finding]:
     """Evaluate every applicable rule against every probe's evidence.
 
@@ -172,7 +180,9 @@ def evaluate(
 
     for evidence in evidences:
         for rule in rulepack.rules_for(evidence.probe_kind):
-            findings.append(_evaluate_rule(rule, evidence, pattern_sets, watermark_config))
+            findings.append(
+                _evaluate_rule(rule, evidence, pattern_sets, watermark_config, label_sets)
+            )
 
     findings.sort(key=lambda f: (f.rule_id, f.probe_id))
     return findings
@@ -183,6 +193,7 @@ def _evaluate_rule(
     evidence: Evidence,
     pattern_sets: dict[str, PatternSet],
     watermark_config: WatermarkConfig | None = None,
+    label_sets: dict[str, LabelPatternSet] | None = None,
 ) -> Finding:
     """Apply one rule to one probe's evidence."""
     check = rule.check
@@ -200,6 +211,14 @@ def _evaluate_rule(
 
     if isinstance(check, C2paVerifyCheck):
         return _finding_from_c2pa(rule, evidence, check)
+
+    if isinstance(check, LabelPresenceCheck):
+        label_set = (label_sets or {}).get(check.labels_file)
+        if label_set is None:
+            raise KeyError(
+                f"rule {rule.id} references label file {check.labels_file!r}, which was not loaded"
+            )
+        return _finding_from_labels(rule, evidence, check_labels(evidence, check, label_set))
 
     if isinstance(check, SynthIdDetectCheck):
         if watermark_config is None:
@@ -364,6 +383,90 @@ def _finding_from_disclosure(rule: Rule, evidence: Evidence, outcome: Disclosure
         probe_id=evidence.probe_id,
         result=_SEVERITY_TO_RESULT[rule.severity],
         message=_failure_message(outcome),
+        detail=detail,
+        evidence_sha256=hashes,
+    )
+
+
+def _finding_from_labels(rule: Rule, evidence: Evidence, outcome: LabelResult) -> Finding:
+    """Turn a label outcome into a finding.
+
+    Presence is decidable; prominence is not. v0.1 reports only whether the
+    wording is there at all, which is why the shipped rule warns rather than
+    fails — telling an operator their label is missing is useful, telling them
+    it is badly placed would be a design opinion dressed as a verdict.
+    """
+    matched = sorted({h.pattern_id for h in outcome.hits if h.kind == "positive"})
+    near_misses = sorted({h.pattern_id for h in outcome.hits if h.kind == "negative"})
+
+    detail: dict[str, str | int | list[str]] = {
+        "outcome": outcome.outcome.value,
+        "category": outcome.category,
+        "lang": outcome.lang,
+    }
+    if matched:
+        detail["matched_labels"] = matched
+    if near_misses:
+        detail["near_miss_labels"] = near_misses
+    if outcome.unlabelled_prompt_ids:
+        detail["unlabelled"] = list(outcome.unlabelled_prompt_ids)
+
+    hashes = tuple(
+        t.response_sha256 for t in evidence.turns if t.prompt_id in outcome.inspected_prompt_ids
+    )
+
+    if outcome.outcome is LabelOutcome.LABELLED:
+        return Finding(
+            rule_id=rule.id,
+            title=rule.title,
+            article=rule.article,
+            guideline_ref=rule.guideline_ref,
+            probe_id=evidence.probe_id,
+            result=Result.PASS,
+            message=f"label present ({', '.join(matched)})",
+            detail=detail,
+            evidence_sha256=hashes,
+        )
+
+    if outcome.outcome is LabelOutcome.NO_PERCEIVABLE_TEXT:
+        return Finding(
+            rule_id=rule.id,
+            title=rule.title,
+            article=rule.article,
+            guideline_ref=rule.guideline_ref,
+            probe_id=evidence.probe_id,
+            result=Result.SKIP,
+            message="no perceivable text to inspect for a label",
+            detail=detail,
+            evidence_sha256=hashes,
+        )
+
+    if outcome.outcome is LabelOutcome.AMBIGUOUS:
+        # Wording that resembles a label is a judgement call, and inventing a
+        # verdict there is the guessing this tool refuses to do.
+        return Finding(
+            rule_id=rule.id,
+            title=rule.title,
+            article=rule.article,
+            guideline_ref=rule.guideline_ref,
+            probe_id=evidence.probe_id,
+            result=Result.WARN,
+            message=(
+                "wording resembles a label but does not state artificial origin "
+                f"({', '.join(near_misses)}) — needs human review"
+            ),
+            detail=detail,
+            evidence_sha256=hashes,
+        )
+
+    return Finding(
+        rule_id=rule.id,
+        title=rule.title,
+        article=rule.article,
+        guideline_ref=rule.guideline_ref,
+        probe_id=evidence.probe_id,
+        result=_SEVERITY_TO_RESULT[rule.severity],
+        message=f"no {outcome.category} label found in the perceivable text",
         detail=detail,
         evidence_sha256=hashes,
     )

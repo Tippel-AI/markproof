@@ -170,6 +170,51 @@ rules:
       on_uncertain: fail
     severity: fail
 
-# Reserved, not yet implementable — see docs/RULES_SOURCES.md §6:
+  # ---------------------------------------------------------------------------
+  # MPF-L-001 — the deployer-side counterpart to MPF-M-001. Article 50(2) asks
+  # the provider for a machine-readable mark; Article 50(4) asks the deployer
+  # for a label a person can actually see. Para 117 is explicit that the first
+  # does not discharge the second, which is why this rule exists separately and
+  # reads text rather than manifests.
+  # ---------------------------------------------------------------------------
+  - id: MPF-L-001
+    title: "Delivered content carries a perceivable label disclosing its artificial origin"
+    article: "Art. 50(4)"
+    guideline_ref: >-
+      Guidelines C(2026) 5054, §6.1.2 para 117; §6.1.1 paras 113-116;
+      §6.1.3 paras 119, 123; §7.1 para 142; §7.2 para 143;
+      Code of Practice, Section 2, Commitment 1, Measures 1.1 and 1.2
+    rationale: >-
+      Deployers who generate or manipulate image, audio or video content that
+      constitutes a deep fake must disclose its artificial origin in a form a
+      person perceives without reaching for a tool — para 117 rules out leaning
+      on the machine-readable Article 50(2) marking for exactly that reason. So
+      the question this rule asks is whether a label reaches the text a person
+      reads, and it deliberately stops there.
+      Severity is warn, not fail, because two of the three questions the
+      obligation really poses are not decidable by comparing strings. Whether
+      the content is a deep fake at all is the four-criteria assessment of
+      paras 113-116 — resemblance to an existing subject, and whether the result
+      would falsely appear authentic — which para 114 makes an objective but
+      case-by-case judgement about audience and context. And whether a label
+      that is present is clear and distinguishable is a matter of position,
+      contrast and duration (para 142, para 143), none of which appear in the
+      text. A fail would claim a precision this check does not have; v0.1
+      therefore reports presence and attaches the evidence.
+    applies_to: [media, ui]
+    check:
+      type: label-presence
+      labels_file: labels.de-en.yaml
+      category: deepfake
+      scope: every_output
+      min_matches: 1
+    severity: warn
+
+# Reserved, not yet implementable — see docs/RULES_SOURCES.md §6 and §9.5:
 #   MPF-D-004  AI agents disclose on whose behalf they act (para 31).
 #              Blocked: needs a second, principal-identity pattern file.
+#   MPF-L-002  Art. 50(3) notice for emotion recognition and biometric
+#              categorisation. The patterns ship in labels.de-en.yaml under
+#              category `emotion-recognition`; the rule does not, because
+#              whether such a system is in operation is a fact about the
+#              deployment that no probe can establish from a response.

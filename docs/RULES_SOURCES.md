@@ -418,3 +418,246 @@ Ergebnis von FAIL auf WARN herabstufen würde.
   auf „July 2026". Fußnote 43 der Leitlinien nennt den **10.06.2026**. Das
   Rulepack verwendet das Datum aus den Leitlinien; `NOTICE` sollte angeglichen
   werden.
+
+---
+
+## 9. Artikel 50(4) — Deepfakes und veröffentlichte Texte
+
+Dieser Abschnitt trägt `MPF-L-001` und die Musterdatei
+`patterns/labels.de-en.yaml`. Er kommt in M5 hinzu, weil Art. 50(4) erst mit
+einer Probe prüfbar wird, die sieht, was eine Person tatsächlich liest — und
+weil die Pflicht sich von Art. 50(2) in einem Punkt unterscheidet, den man
+leicht überliest: Sie richtet sich an den **Betreiber**, nicht an den Anbieter,
+und sie verlangt kein Metadatum, sondern ein Etikett.
+
+### 9.1 Zwei Pflichten, ein Absatz
+
+Art. 50(4) enthält zwei getrennte Verpflichtungen (Rn. 111). Die erste trifft
+Betreiber von KI-Systemen, die Bild-, Ton- oder Videoinhalte erzeugen oder
+verändern, die einen Deepfake darstellen; die zweite Betreiber, die
+KI-generierten oder -veränderten **Text** veröffentlichen, um die Öffentlichkeit
+über Angelegenheiten von öffentlichem Interesse zu informieren. Beide gelten
+zusätzlich zu den Markierungspflichten des Art. 50(2) und lassen diese
+unberührt.
+
+Ob ein Inhalt überhaupt ein Deepfake ist, entscheidet Art. 3(60) über vier
+kumulative Merkmale, die die Leitlinien in Rn. 113 einzeln durchgehen:
+Ähnlichkeit, Existenz des dargestellten Gegenstands, die Kategorie (Personen,
+Objekte, Orte, Entitäten, Ereignisse) und die Eignung, fälschlich als echt oder
+wahrheitsgemäß zu erscheinen. Rn. 114 macht daraus eine Gesamtbetrachtung, die
+Kontext, Publikum und Erwartungshaltung einbezieht, dabei aber objektiv bleibt:
+Eine Täuschungsabsicht des Betreibers ist nicht erforderlich. Rn. 115 verbietet
+ausdrücklich, dabei auf eine hypothetische Durchschnittsperson abzustellen —
+anders als bei der Offensichtlichkeitsausnahme aus Art. 50(1) —, und verlangt,
+die tatsächlich vorhersehbare Publikumszusammensetzung zu berücksichtigen. Rn.
+116 nimmt umgekehrt geringfügige Eingriffe heraus: Farbkorrektur,
+Rauschunterdrückung, Retusche, Kompression.
+
+**Das ist die erste und wichtigste Grenze für ein CI-Werkzeug.** Diese Prüfung
+ist eine Einzelfallwertung über Ähnlichkeit und Täuschungseignung. Ein
+Musterabgleich kann sie nicht durchführen — er sieht den Text neben dem Bild,
+nicht das Bild und schon gar nicht sein Publikum.
+
+### 9.2 Was offengelegt werden muss, wann und in welcher Form
+
+> **Fundstelle:** Rn. 117 · Rn. 132 · Rn. 141–143 · Code of Practice, Abschnitt
+> 2, Verpflichtung 1, Maßnahmen 1.1 und 1.2 · **Regel:** `MPF-L-001`
+
+Rn. 117 ist die Randnummer, auf der die Regel steht. Der Betreiber muss den
+künstlichen Ursprung des Inhalts offenlegen, und zwar durch eine Kennzeichnung,
+die für natürliche Personen **verständlich und wahrnehmbar** ist — sichtbar oder
+hörbar —, ohne dass sie dafür ein Werkzeug einsetzen oder eine eigene Handlung
+vornehmen müssen. Derselbe Satz zieht die Konsequenz, die diese Regel von
+`MPF-M-001` trennt: Betreiber dürfen sich **nicht** auf die maschinenlesbare
+Markierung stützen, die der Anbieter nach Art. 50(2) eingebettet hat, weil diese
+am Ort der Wahrnehmung nicht klar und unterscheidbar ist. Ein Bild kann also ein
+tadelloses C2PA-Manifest tragen und trotzdem gegen Art. 50(4) verstoßen. Genau
+deshalb prüft `MPF-L-001` Text und nicht Metadaten, und deshalb ist der Hinweis
+auf ein Manifest hier ein **negatives** Muster (`de-nf-01`, `en-nf-01`).
+
+Für Text gilt nach Rn. 132 dasselbe, ausdrücklich einschließlich Disclaimern.
+
+Der Zeitpunkt folgt aus Art. 50(5): spätestens bei der ersten Interaktion oder
+Exposition (Rn. 141). Rn. 143 präzisiert das für Inhalte nach Art. 50(2) und (4)
+in dem Punkt, der die Voreinstellung der Regel bestimmt — die Informationspflicht
+gilt für **jede Ausgabe** des Systems gegenüber jeder exponierten Person. Eine
+Kennzeichnung am ersten Bild sagt nichts über das zweite. Daraus wird
+`scope: every_output`. Rn. 143 fügt hinzu, dass ein Hinweis allein am Anfang
+nicht genügt, wenn absehbar ist, dass Personen den Inhalt nicht von Beginn an
+wahrnehmen — bei laufendem Video etwa nach Werbeunterbrechungen.
+
+Wie die Kennzeichnung konkret aussieht, lässt der Rechtstext offen; der Code of
+Practice füllt die Lücke. Abschnitt 2, Maßnahme 1.1(a) macht das frei
+verfügbare EU-Icon zur Referenz, dessen zentrales Element das großgeschriebene
+Akronym „AI" ist, und 1.1(b) empfiehlt eine zweite Ebene mit den Worten
+„generiert" beziehungsweise „modifiziert". Maßnahme 1.2 regelt die Platzierung:
+sofortige Erkennbarkeit ohne Nutzerinteraktion, ausreichende Dauer, Einbettung
+in den Inhalt, bei Video Wiederholung in Intervallen, bei Text oberhalb oder
+neben der Überschrift.
+
+### 9.3 Was `MPF-L-001` wirklich prüft — und warum sie warnt
+
+Von den drei Fragen, die Art. 50(4) stellt, ist genau eine deterministisch
+beantwortbar.
+
+*Ist der Inhalt ein Deepfake?* Das ist die Vier-Merkmale-Prüfung aus Rn. 113–116
+und eine Wertung über Ähnlichkeit, Kontext und Publikum. Nicht entscheidbar.
+
+*Ist eine vorhandene Kennzeichnung klar und unterscheidbar?* Rn. 142 füllt den
+Maßstab mit Wahrnehmbarkeit, Verständlichkeit und Abhebbarkeit vom Umfeld;
+nicht klar und unterscheidbar ist, was sich unter normalen Bedingungen leicht
+übersehen lässt. Das hängt an Position, Kontrast, Schriftgröße und Dauer —
+lauter Eigenschaften, die im Text nicht vorkommen. Nicht entscheidbar.
+
+*Steht überhaupt eine Kennzeichnung da?* Das ist eine Frage über Zeichenketten,
+und sie hat eine Antwort.
+
+`MPF-L-001` beantwortet die dritte Frage und behauptet die anderen beiden nicht.
+Deshalb `severity: warn`. Ein `fail` würde eine Genauigkeit beanspruchen, die
+die Regel nicht hat: Es gäbe Endpoints rot, deren Ausgaben gar keine Deepfakes
+sind, und es färbte grün, was zwar das Wort „KI-generiert" enthält, es aber in
+6-Punkt-Grau unter drei Menüebenen versteckt.
+
+Zwei weitere Grenzen gehören offen dazu, weil sie das Ergebnis in v0.1 prägen:
+
+**Das EU-Icon ist eine Grafik.** Ein Betreiber, der Maßnahme 1.1 mustergültig
+umsetzt und ausschließlich das Icon zeigt, liefert keinen Text, den ein
+Musterabgleich sehen könnte. Die Musterdatei fängt die textliche zweite Ebene
+(„AI-generiert", `de-df-09`) und die geschriebenen Disclaimer, das Icon selbst
+nicht. Ein `NOT_LABELLED` ist damit ein Hinweis zum Nachsehen, keine Feststellung.
+
+**Die Media-Probe zeichnet nicht auf, was eine Betrachterin liest.** Sie legt in
+`turn.response.content` eine Zusammenfassung der gelieferten Assets ab; die
+Kennzeichnung lebt dort, wo der Inhalt angezeigt wird, und das ist nicht die
+Antwort einer Bild-API. Auf einer Media-Probe prüft die Regel deshalb der Sache
+nach nur, ob das Endpoint selbst eine Kennzeichnung mitschickt — ein schwacher
+Indikator, der als WARN richtig eingeordnet ist. Sinn ergibt die Regel dort, wo
+die UI-Probe den sichtbaren Text einer gerenderten Oberfläche aufnimmt. Der
+Check unterscheidet dafür `NOT_LABELLED` (Text gelesen, keine Kennzeichnung) von
+`NO_PERCEIVABLE_TEXT` (nichts zu lesen gewesen); das zweite ist ein
+ausdrückliches Nicht-Urteil.
+
+Der vierte Ausgang `AMBIGUOUS` entspricht dem `NEAR_MISS` der Offenlegungsregel:
+Es hat nichts Positives getroffen, aber eine Formulierung, die die Kuratierung
+als *keine* Kennzeichnung führt. Die Kandidaten kommen aus der Praxis und haben
+jeweils eine Fundstelle — der Verweis aufs Manifest (Rn. 117), die pauschale
+Aussage „diese Website nutzt KI" statt einer Angabe zu *diesem* Inhalt (Rn. 142,
+143), „digital bearbeitet" ohne Aussage über den künstlichen Ursprung (Rn. 116),
+sowie das Bildnachweis-Vokabular „Symbolbild" / *stock photo*, das vor
+wörtlicher Lesart warnt und über KI nichts sagt.
+
+### 9.4 Die Ausnahmen
+
+Wie bei Art. 50(1) sind alle Ausnahmen **Kontextfragen**. Keine wird zur Regel;
+sie stehen hier, damit ein Team weiß, wann eine Warnung folgenlos bleibt.
+
+**Kunst, Kreativität, Satire, Fiktion (Rn. 119–124).** Die Pflicht entfällt
+nicht, sie wird abgeschwächt: Offenzulegen ist weiterhin, aber in einer Form,
+die Darstellung und Genuss des Werks nicht beeinträchtigt (Rn. 119, 123). Rn.
+120 definiert die Kategorien, Rn. 122 legt „offensichtlich" **eng** aus — Inhalte,
+deren Charakter für das Publikum unklar oder mehrdeutig bleibt, fallen heraus,
+und wo sich informative und kreative Züge mischen, setzt sich der informative
+durch und die normale Kennzeichnungspflicht greift. Rn. 124 hält fest, dass die
+Erleichterung keine Rechte Dritter aushebelt.
+
+**Strafverfolgung (Rn. 125).** Ist der Einsatz gesetzlich zur Aufdeckung,
+Verhütung, Ermittlung oder Verfolgung von Straftaten erlaubt, entfällt die
+Pflicht; die Leitlinien verweisen für die Einzelheiten auf Rn. 46–48, also auf
+dieselbe Prüfung wie in §4.2 dieses Dokuments.
+
+**Menschliche Überprüfung und redaktionelle Verantwortung (Rn. 133–138)** —
+nur für Text. Zwei Bedingungen müssen kumulativ vorliegen: eine inhaltliche
+Prüfung durch fachkundige Menschen einschließlich Faktenprüfung (Rn. 134) und
+eine natürliche oder juristische Person, die die redaktionelle Verantwortung für
+die Veröffentlichung trägt und deren Identität und Kontaktdaten auffindbar
+öffentlich gemacht sind (Rn. 138). Rn. 135 schließt oberflächliche, rein
+formale oder automatisierte Kontrollen aus; Rn. 136 lässt die Ausnahme
+entfallen, sobald nach der redaktionellen Freigabe noch einmal ein KI-System
+inhaltlich eingreift.
+
+**Keine Rückwirkung (Rn. 154).** Deepfakes, die vor dem 02.08.2026 erzeugt oder
+verändert wurden, müssen nicht nachträglich gekennzeichnet werden. Für Texte
+gilt das nur, wenn sie vor diesem Datum auch veröffentlicht wurden — wer einen
+älteren Text danach publiziert, muss kennzeichnen. Die Übergangsfrist bis zum
+02.12.2026 aus dem AI-Omnibus betrifft nach Rn. 153 ausschließlich die
+Markierungs- und Erkennungspflichten aus Art. 50(2), nicht Art. 50(4).
+
+### 9.5 Was bewusst keine Regel geworden ist
+
+**Art. 50(4) Unterabsatz 2 — veröffentlichter Text.** Die Pflicht ist scharf
+umrissen (Rn. 130–132), aber ihre Auslöser liegen außerhalb dessen, was eine
+Probe beobachtet. Ob ein Text *veröffentlicht* ist im Sinne von Rn. 131 i, ob er
+die Öffentlichkeit informiert und ob sein Gegenstand von öffentlichem Interesse
+ist, entscheidet sich am Publikationsvorgang, nicht an der Antwort eines
+Endpoints. Die Beispielliste der Leitlinien nennt ausdrücklich die
+Chatbot-Zusammenfassung, die nur die anfragende Person sieht, als **nicht**
+erfasst. Ein Werkzeug, das jede Chat-Antwort an dieser Pflicht misst, würde
+danebenliegen. Das Vokabular aus `labels.de-en.yaml` passt inhaltlich; es fehlt
+eine Probe, die eine Veröffentlichung beobachtet.
+
+**Art. 50(3) — Emotionserkennung und biometrische Kategorisierung
+(`MPF-L-002`).** Die Muster für diese Pflicht liegen unter der Kategorie
+`emotion-recognition` bereit, eine Regel im ausgelieferten Rulepack gibt es
+nicht. Der Grund ist derselbe in anderer Gestalt: Adressat ist der Betreiber
+(Rn. 99), und die Pflicht knüpft daran, dass ein solches System **betrieben
+wird**. Das ist eine Tatsache über die Installation, nicht über die Antwort;
+markproof kann sie nicht feststellen und darf sie nicht unterstellen. Wer
+weiß, dass sein Kiosk, sein Spiel oder seine Ladenfläche ein solches System
+einsetzt, formuliert eine lokale Regel gegen die UI-Probe und prüft damit die
+Frage, die eine Maschine beantworten kann: ob der nach Rn. 105 verlangte Hinweis
+tatsächlich auf dem Bildschirm ankommt. Rn. 107 lässt Schrift, Piktogramm,
+Ansage oder Kombinationen zu, Rn. 108 verlangt den Hinweis spätestens bei der
+ersten Exposition.
+
+Zwei Abgrenzungen tragen dabei die negativen Muster. Eine Stimmungsanalyse von
+geschriebenem Text ist **kein** Emotionserkennungssystem, weil Art. 3(39) die
+Ableitung aus biometrischen Daten verlangt (Rn. 101) — daher `de-nf-06`,
+`en-nf-06`. Und ein Videoüberwachungshinweis sagt, dass gefilmt wird, nicht dass
+Emotionen abgeleitet oder biometrische Kategorien vergeben werden (Rn. 105) —
+daher `de-nf-07`, `en-nf-07`.
+
+**Plattformseitige Kennzeichnung nach Art. 35(1)(k) DSA.** Rn. 126 stellt die
+Vorschrift neben Art. 50(4) und benennt zwei Unterschiede: Der DSA erfasst auch
+ohne KI erzeugte Inhalte und richtet sich an Anbieter sehr großer Plattformen
+und Suchmaschinen, nicht an Betreiber von KI-Systemen. Für markproof ist das
+eine fremde Adressatengruppe.
+
+### 9.6 Die abgeleitete Regel
+
+| Regel | Art. | Fundstelle | Probe | Scope | Severity | Status |
+|---|---|---|---|---|---|---|
+| `MPF-L-001` | 50(4) UAbs. 1 | Rn. 117 · 113–116 · 119, 123 · 142, 143 | `media`, `ui` | `every_output` | `warn` | **aktiv in M5** |
+| `MPF-L-002` | 50(3) | Rn. 99, 105, 107, 108 | `ui` | — | offen | Muster vorhanden, Regel bewusst offen (§9.5) |
+
+Die Musterdatei führt je Sprache zwölf positive Deepfake-Muster, zehn positive
+Muster für Art.-50(3)-Hinweise und je Kategorie negative Muster. Jeder Eintrag
+trägt seine Fundstelle in `note`.
+
+### 9.7 Prüfprotokoll und offene Punkte
+
+Grundlage ist der Volltext des Leitlinien-PDF C(2026) 5054 final (ANHANG) mit
+der in §1 dokumentierten SHA-256-Summe sowie der Volltext des Code of Practice;
+Abschnitte 5, 6 und 7 wurden vollständig gelesen, jede Randnummer im Dokument
+selbst nachgeschlagen. Die Musterdatei validiert gegen das Pydantic-Modell, jedes
+Muster kompiliert als Python-`re`, und eine Verhaltenstabelle prüft, dass echte
+Kennzeichnungen `LABELLED` ergeben, die Rn.-117-Fälle (Verweis aufs Manifest)
+`AMBIGUOUS` und unbeschriftete Bildunterschriften `NOT_LABELLED`.
+
+- **VERIFIZIEREN: Annex 1 des Code of Practice.** Die Gestaltungsvorgaben in
+  Maßnahme 1.1 verweisen auf ein EU-Icon in Annex 1. Ausgewertet wurde der
+  Fließtext der Maßnahme, nicht die Grafik selbst. Wer die Icon-Spezifikation
+  zitieren will — Proportionen, Farbvarianten, die genaue Beschriftung der
+  zweiten Ebene —, sollte den Annex im Original heranziehen.
+- **VERIFIZIEREN: Zitierweise für die zwei Abschnitte des Code of Practice.**
+  Der Code führt zwei Abschnitte mit jeweils eigener Zählung „Verpflichtung 1,
+  2, …": Abschnitt 1 für Anbieter (Art. 50(2) und (5)), Abschnitt 2 für
+  Betreiber (Art. 50(4) und (5)). `MPF-L-001` zitiert deshalb ausdrücklich
+  „Abschnitt 2". **Anmerkung an die Wartung:** `MPF-M-001` und `MPF-T-001`
+  zitieren „Commitment 2" beziehungsweise „Commitment 1" ohne Abschnittsangabe;
+  gemeint ist Abschnitt 1, und die Angabe sollte bei nächster Gelegenheit
+  ergänzt werden, weil sie seit dieser Regel mehrdeutig ist.
+- **VERIFIZIEREN: Fundstelle des AI-Omnibus.** Rn. 153 beschreibt die
+  Übergangsfrist bis zum 02.12.2026 als von der bereits verabschiedeten
+  Änderungsverordnung vorgesehen, nennt aber keine Fundstelle im Amtsblatt. Für
+  eine Veröffentlichung sollte die Verordnung selbst zitiert werden. Für
+  `MPF-L-001` ist der Punkt folgenlos: Die Frist betrifft Art. 50(2).

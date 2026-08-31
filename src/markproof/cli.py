@@ -28,11 +28,20 @@ from rich.table import Table
 
 from markproof import __version__
 from markproof.checks.disclosure import PatternSet, load_pattern_set
+from markproof.checks.labels import LabelPatternSet, load_label_set
 from markproof.checks.synthid import WatermarkConfig, load_watermark_config
-from markproof.config import ConfigError, MarkproofConfig, MediaProbeConfig, load_config
+from markproof.config import (
+    ConfigError,
+    HttpChatProbeConfig,
+    MarkproofConfig,
+    MediaProbeConfig,
+    UiProbeConfig,
+    load_config,
+)
 from markproof.probes.base import Evidence, ProbeError
 from markproof.probes.http_chat import HttpChatProbe
 from markproof.probes.media import MediaProbe
+from markproof.probes.ui import UiProbe
 from markproof.report.model import build_report
 from markproof.report.sign import (
     SigningError,
@@ -140,6 +149,20 @@ def _load_watermark(config: MarkproofConfig, config_path: Path) -> WatermarkConf
     return load_watermark_config(path)
 
 
+def _load_label_sets(rulepack: Rulepack) -> dict[str, LabelPatternSet]:
+    """Load every label file the rulepack references, once each."""
+    sets: dict[str, LabelPatternSet] = {}
+    for rule in rulepack.rules:
+        filename = getattr(rule.check, "labels_file", None)
+        if filename is None or filename in sets:
+            continue
+        path = _PATTERNS_DIR / filename
+        if not path.is_file():
+            raise ConfigError(f"rule {rule.id} references missing label file: {path}")
+        sets[filename] = load_label_set(path)
+    return sets
+
+
 def _collect(config: MarkproofConfig) -> tuple[list[Evidence], list[Finding]]:
     """Run every configured probe, collecting failures as findings.
 
@@ -153,10 +176,18 @@ def _collect(config: MarkproofConfig) -> tuple[list[Evidence], list[Finding]]:
     for probe_config in config.target.probes:
         console.print(f"  probing [cyan]{probe_config.id}[/cyan] → {probe_config.url}")
         try:
+            # Explicit per type: an else-branch would quietly treat a probe
+            # kind this build does not know as a chat probe.
             if isinstance(probe_config, MediaProbeConfig):
                 evidences.append(MediaProbe(probe_config).collect())
-            else:
+            elif isinstance(probe_config, UiProbeConfig):
+                evidences.append(UiProbe(probe_config).collect())
+            elif isinstance(probe_config, HttpChatProbeConfig):
                 evidences.append(HttpChatProbe(probe_config).collect())
+            else:  # pragma: no cover - the config union makes this unreachable
+                raise ConfigError(
+                    f"probe {probe_config.id!r} has a type this build cannot run"
+                )
         except ProbeError as exc:
             console.print(f"    [bold red]unreachable:[/] {exc}")
             failures.append(probe_failure_finding(probe_config.id, str(exc)))
@@ -267,6 +298,7 @@ def run(
         config = load_config(config_path)
         rulepack = load_rulepack(_resolve_rulepack(rulepack_name or config.rulepack))
         pattern_sets = _load_pattern_sets(rulepack)
+        label_sets = _load_label_sets(rulepack)
         watermark = _load_watermark(config, config_path)
         evidences, probe_failures = _collect(config)
     except (ConfigError, SigningError, ValueError) as exc:
@@ -277,7 +309,7 @@ def run(
         raise typer.Exit(code=2) from exc
 
     findings = sorted(
-        evaluate(rulepack, evidences, pattern_sets, watermark) + probe_failures,
+        evaluate(rulepack, evidences, pattern_sets, watermark, label_sets) + probe_failures,
         key=lambda f: (f.rule_id, f.probe_id),
     )
     _render(findings, config.target.name, rulepack)

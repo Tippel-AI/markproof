@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from markproof.checks.disclosure import PatternSet, load_pattern_set
+from markproof.checks.labels import LabelPatternSet, load_label_set
 from markproof.probes.base import Artifact, Evidence, Message, Role, Turn, sha256_hex
 from markproof.rules.engine import Result, evaluate, exit_code_for
 from markproof.rules.schema import ProbeKind, Rulepack, load_rulepack
@@ -48,13 +49,21 @@ def shipped_patterns() -> dict[str, PatternSet]:
     return {"disclosure.de-en.yaml": load_pattern_set(_PKG / "patterns" / "disclosure.de-en.yaml")}
 
 
+@pytest.fixture(scope="module")
+def shipped_labels() -> dict[str, LabelPatternSet]:
+    return {"labels.de-en.yaml": load_label_set(_PKG / "patterns" / "labels.de-en.yaml")}
+
+
 def _evidence_from(replies: dict[str, str]) -> Evidence:
     return make_evidence(*(make_turn(pid, text) for pid, text in replies.items()))
 
 
 class TestShippedData:
     def test_rulepack_and_patterns_load(
-        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+        self,
+        shipped_rulepack: Rulepack,
+        shipped_patterns: dict[str, PatternSet],
+        shipped_labels: dict[str, LabelPatternSet],
     ) -> None:
         assert shipped_rulepack.rulepack == "art50-eu-2026.07"
         assert shipped_rulepack.attribution.strip()
@@ -87,9 +96,18 @@ class TestShippedData:
 
 class TestDemoBotModes:
     def test_conformant_replies_pass_and_exit_zero(
-        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+        self,
+        shipped_rulepack: Rulepack,
+        shipped_patterns: dict[str, PatternSet],
+        shipped_labels: dict[str, LabelPatternSet],
     ) -> None:
-        findings = evaluate(shipped_rulepack, [_evidence_from(_PASS_REPLIES)], shipped_patterns)
+        findings = evaluate(
+            shipped_rulepack,
+            [_evidence_from(_PASS_REPLIES)],
+            shipped_patterns,
+            None,
+            shipped_labels,
+        )
         # MPF-T-001 skips without a watermark config, which is the documented
         # behaviour for an operator who does not watermark text.
         assert {f.result for f in findings} == {Result.PASS, Result.SKIP}
@@ -97,39 +115,70 @@ class TestDemoBotModes:
         assert exit_code_for(findings) == 0
 
     def test_non_conformant_replies_fail_and_exit_one(
-        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+        self,
+        shipped_rulepack: Rulepack,
+        shipped_patterns: dict[str, PatternSet],
+        shipped_labels: dict[str, LabelPatternSet],
     ) -> None:
-        findings = evaluate(shipped_rulepack, [_evidence_from(_FAIL_REPLIES)], shipped_patterns)
+        findings = evaluate(
+            shipped_rulepack,
+            [_evidence_from(_FAIL_REPLIES)],
+            shipped_patterns,
+            None,
+            shipped_labels,
+        )
         assert any(f.rule_id == "MPF-D-001" and f.result is Result.FAIL for f in findings)
         assert exit_code_for(findings) == 1
 
     def test_direct_question_rule_reads_the_direct_answer(
-        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+        self,
+        shipped_rulepack: Rulepack,
+        shipped_patterns: dict[str, PatternSet],
+        shipped_labels: dict[str, LabelPatternSet],
     ) -> None:
         """A disclosed opener must not rescue a bot that dodges the direct question."""
         mixed = dict(_FAIL_REPLIES)
         mixed["neutral-opener"] = _PASS_REPLIES["neutral-opener"]
-        findings = evaluate(shipped_rulepack, [_evidence_from(mixed)], shipped_patterns)
+        findings = evaluate(
+            shipped_rulepack, [_evidence_from(mixed)], shipped_patterns, None, shipped_labels
+        )
         by_id = {f.rule_id: f for f in findings}
         assert by_id["MPF-D-001"].result is Result.PASS
         assert by_id["MPF-D-003"].result is Result.FAIL
 
     def test_matched_patterns_are_listed_once_each(
-        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+        self,
+        shipped_rulepack: Rulepack,
+        shipped_patterns: dict[str, PatternSet],
+        shipped_labels: dict[str, LabelPatternSet],
     ) -> None:
         """One pattern hitting two bound prompts is one piece of evidence."""
-        findings = evaluate(shipped_rulepack, [_evidence_from(_PASS_REPLIES)], shipped_patterns)
+        findings = evaluate(
+            shipped_rulepack,
+            [_evidence_from(_PASS_REPLIES)],
+            shipped_patterns,
+            None,
+            shipped_labels,
+        )
         for finding in findings:
             matched = finding.detail.get("matched_patterns", [])
             assert isinstance(matched, list)
             assert len(matched) == len(set(matched)), f"{finding.rule_id} lists a pattern twice"
 
     def test_repeated_evaluation_is_byte_identical(
-        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+        self,
+        shipped_rulepack: Rulepack,
+        shipped_patterns: dict[str, PatternSet],
+        shipped_labels: dict[str, LabelPatternSet],
     ) -> None:
         evidence = _evidence_from(_FAIL_REPLIES)
         runs = [
-            [f.model_dump_json() for f in evaluate(shipped_rulepack, [evidence], shipped_patterns)]
+            [
+                f.model_dump_json()
+                for f in evaluate(
+                    shipped_rulepack, [evidence], shipped_patterns, None, shipped_labels
+                )
+            ]
             for _ in range(3)
         ]
         assert all(r == runs[0] for r in runs)
@@ -160,76 +209,127 @@ class TestMediaRule:
         )
 
     def test_correctly_marked_media_passes(
-        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+        self,
+        shipped_rulepack: Rulepack,
+        shipped_patterns: dict[str, PatternSet],
+        shipped_labels: dict[str, LabelPatternSet],
     ) -> None:
         findings = evaluate(
-            shipped_rulepack, [self._media_evidence("signed-valid.png")], shipped_patterns
+            shipped_rulepack,
+            [self._media_evidence("signed-valid.png")],
+            shipped_patterns,
+            None,
+            shipped_labels,
         )
-        assert [f.rule_id for f in findings] == ["MPF-M-001"]
-        assert findings[0].result is Result.PASS
+        # MPF-L-001 also applies to media probes; this test is about the
+        # manifest rule, so it asks that rule rather than the whole list.
+        media = next(f for f in findings if f.rule_id == "MPF-M-001")
+        assert media.result is Result.PASS
 
     def test_stripped_manifest_fails(
-        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+        self,
+        shipped_rulepack: Rulepack,
+        shipped_patterns: dict[str, PatternSet],
+        shipped_labels: dict[str, LabelPatternSet],
     ) -> None:
         """The CDN-stripped case — the most common real-world failure."""
         findings = evaluate(
-            shipped_rulepack, [self._media_evidence("unsigned.png")], shipped_patterns
+            shipped_rulepack,
+            [self._media_evidence("unsigned.png")],
+            shipped_patterns,
+            None,
+            shipped_labels,
         )
-        assert findings[0].result is Result.FAIL
-        assert findings[0].detail["outcome"] == "manifest_missing"
+        media = next(f for f in findings if f.rule_id == "MPF-M-001")
+        assert media.result is Result.FAIL
+        assert media.detail["outcome"] == "manifest_missing"
 
     def test_signed_but_not_ai_marked_fails(
-        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+        self,
+        shipped_rulepack: Rulepack,
+        shipped_patterns: dict[str, PatternSet],
+        shipped_labels: dict[str, LabelPatternSet],
     ) -> None:
         """Correctly signed is not the same as marked as AI-generated."""
         findings = evaluate(
-            shipped_rulepack, [self._media_evidence("signed-wrong-type.png")], shipped_patterns
+            shipped_rulepack,
+            [self._media_evidence("signed-wrong-type.png")],
+            shipped_patterns,
+            None,
+            shipped_labels,
         )
-        assert findings[0].result is Result.FAIL
-        assert findings[0].detail["outcome"] == "wrong_source_type"
-        assert findings[0].detail["declared_source_types"] == ["algorithmicMedia"]
+        media = next(f for f in findings if f.rule_id == "MPF-M-001")
+        assert media.result is Result.FAIL
+        assert media.detail["outcome"] == "wrong_source_type"
+        assert media.detail["declared_source_types"] == ["algorithmicMedia"]
 
     def test_tampered_media_fails(
-        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+        self,
+        shipped_rulepack: Rulepack,
+        shipped_patterns: dict[str, PatternSet],
+        shipped_labels: dict[str, LabelPatternSet],
     ) -> None:
         findings = evaluate(
-            shipped_rulepack, [self._media_evidence("tampered.png")], shipped_patterns
+            shipped_rulepack,
+            [self._media_evidence("tampered.png")],
+            shipped_patterns,
+            None,
+            shipped_labels,
         )
-        assert findings[0].result is Result.FAIL
-        assert findings[0].detail["outcome"] == "invalid"
+        media = next(f for f in findings if f.rule_id == "MPF-M-001")
+        assert media.result is Result.FAIL
+        assert media.detail["outcome"] == "invalid"
 
     def test_chat_and_media_rules_do_not_bleed_into_each_other(
-        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+        self,
+        shipped_rulepack: Rulepack,
+        shipped_patterns: dict[str, PatternSet],
+        shipped_labels: dict[str, LabelPatternSet],
     ) -> None:
         """Each rule applies to its own probe kind and no other."""
         findings = evaluate(
             shipped_rulepack,
             [_evidence_from(_PASS_REPLIES), self._media_evidence("unsigned.png")],
             shipped_patterns,
+            None,
+            shipped_labels,
         )
         by_probe = {
             f.probe_id: {f2.rule_id for f2 in findings if f2.probe_id == f.probe_id}
             for f in findings
         }
         assert by_probe["chat"] == {"MPF-D-001", "MPF-D-003", "MPF-T-001"}
-        assert by_probe["images"] == {"MPF-M-001"}
+        assert by_probe["images"] == {"MPF-M-001", "MPF-L-001"}
 
     def test_evidence_hash_ties_the_finding_to_the_asset(
-        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+        self,
+        shipped_rulepack: Rulepack,
+        shipped_patterns: dict[str, PatternSet],
+        shipped_labels: dict[str, LabelPatternSet],
     ) -> None:
         evidence = self._media_evidence("signed-valid.png")
-        findings = evaluate(shipped_rulepack, [evidence], shipped_patterns)
-        assert findings[0].evidence_sha256 == (evidence.turns[0].artifacts[0].sha256,)
+        findings = evaluate(shipped_rulepack, [evidence], shipped_patterns, None, shipped_labels)
+        media = next(f for f in findings if f.rule_id == "MPF-M-001")
+        assert media.evidence_sha256 == (evidence.turns[0].artifacts[0].sha256,)
 
 
 class TestTextRuleWiring:
     """MPF-T-001 in the shipped rulepack, with and without a config."""
 
     def test_skips_visibly_without_a_watermark_config(
-        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+        self,
+        shipped_rulepack: Rulepack,
+        shipped_patterns: dict[str, PatternSet],
+        shipped_labels: dict[str, LabelPatternSet],
     ) -> None:
         """Not a silent skip: the report says why the check did not run."""
-        findings = evaluate(shipped_rulepack, [_evidence_from(_PASS_REPLIES)], shipped_patterns)
+        findings = evaluate(
+            shipped_rulepack,
+            [_evidence_from(_PASS_REPLIES)],
+            shipped_patterns,
+            None,
+            shipped_labels,
+        )
         text_finding = next(f for f in findings if f.rule_id == "MPF-T-001")
         assert text_finding.result is Result.SKIP
         assert "watermark configuration" in text_finding.message
@@ -237,7 +337,10 @@ class TestTextRuleWiring:
 
     @pytest.mark.synthid
     def test_runs_when_the_config_is_supplied(
-        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+        self,
+        shipped_rulepack: Rulepack,
+        shipped_patterns: dict[str, PatternSet],
+        shipped_labels: dict[str, LabelPatternSet],
     ) -> None:
         """With a config, the rule scores the endpoint's own text."""
         import json as _json
