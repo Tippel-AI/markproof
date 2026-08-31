@@ -8,7 +8,13 @@
 ``rules list`` / ``rules schema``
     List the rules of a rulepack; export the pydantic schemas as JSON Schema.
 
-``verify-report``, ``keygen`` and ``init`` arrive with the signed report in M4.
+``verify-report``
+    Check a report's signature. The auditor's command: it needs the report, a
+    public key and this tool, on a machine that never saw the system under test.
+``keygen``
+    Generate an Ed25519 key pair for signing.
+``init``
+    Write a starting ``markproof.yaml``.
 
 The module-level object ``app`` is the console-script target declared in
 ``pyproject.toml`` (``markproof = "markproof.cli:app"``).
@@ -539,6 +545,90 @@ def verify_report_command(
     )
     console.print()
     raise typer.Exit(code=0 if valid else 1)
+
+
+_SCAFFOLD = """\
+# SPDX-License-Identifier: Apache-2.0
+#
+# Written by `markproof init`. Point it at the endpoint your users actually
+# reach — a staging copy proves nothing about production.
+version: 1
+
+target:
+  name: {name}
+  probes:
+    - id: chat
+      type: http-chat
+      url: {url}
+      dialect: openai-chat        # or generic-json + response_path
+      lang: de                    # de | en
+      # auth: {{header: Authorization, env: MARKPROOF_TOKEN}}
+
+# Which Article 50 obligations bind this target. Everything not listed is
+# checked, so silence never removes a rule. A `false` here is a claim, not a mute
+# switch: it travels into the signed report, so a green run states its own scope.
+#
+#   ai-interaction · synthetic-media-marking · synthetic-text-marking
+#   emotion-recognition · deepfake-labelling · public-interest-text
+# applicability:
+#   deepfake-labelling: false
+
+# Verifying text marking needs the parameters you generate with. Without them
+# the text rule skips and says so — it never guesses.
+# text_marking:
+#   method: synthid
+#   watermark_config: secrets/watermark_config.json
+
+rulepack: art50-eu-2026.07
+
+report:
+  formats: [json, summary]        # add `pdf` for the artefact an auditor reads
+  # sign_key: env:MARKPROOF_SIGNING_KEY
+"""
+
+
+@app.command()
+def init(
+    path: Annotated[Path, typer.Option("--config", "-c", help="Where to write the config.")] = Path(
+        "markproof.yaml"
+    ),
+    url: Annotated[
+        str,
+        typer.Option("--url", help="The chat endpoint to probe."),
+    ] = "https://api.example.com/v1/chat/completions",
+    name: Annotated[str, typer.Option("--name", help="A name for the target.")] = "my-service",
+    force: Annotated[bool, typer.Option("--force", help="Overwrite an existing file.")] = False,
+) -> None:
+    """Write a starting markproof.yaml.
+
+    Deliberately small. The scaffold configures one chat probe and leaves the
+    media, UI and text-marking blocks commented out with the reason each is
+    optional, because a config full of settings nobody chose is how people end up
+    running checks they cannot interpret.
+    """
+    if path.exists() and not force:
+        err_console.print(
+            f"[bold red]error:[/] {path} already exists. Pass --force to overwrite it."
+        )
+        raise typer.Exit(code=2)
+
+    try:
+        path.write_text(_SCAFFOLD.format(name=name, url=url), encoding="utf-8")
+    except OSError as exc:
+        err_console.print(f"[bold red]error:[/] could not write {path}: {exc}")
+        raise typer.Exit(code=2) from exc
+
+    console.print()
+    console.print(f"  wrote [cyan]{path}[/cyan]")
+    console.print()
+    console.print("  Next:")
+    console.print(f"    1. set the url in {path} to the endpoint your users reach")
+    console.print(f"    2. [cyan]markproof run --config {path}[/cyan]")
+    console.print()
+    console.print(
+        "  [dim]No endpoint yet? examples/demo-bot is a deliberately non-conformant one.[/dim]"
+    )
+    console.print()
 
 
 @app.command()

@@ -1,0 +1,50 @@
+name: A verdict looks wrong
+description: markproof reported PASS, FAIL, WARN or SKIP where you expected something else.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the most important kind of report this project can get. A tool that
+        decides compliance questions has one job, and a wrong verdict is the whole
+        failure — especially a **PASS that should have been a FAIL**, which is the
+        outcome nothing downstream will catch.
+  - type: input
+    id: rule
+    attributes:
+      label: Which rule
+      placeholder: MPF-D-001
+    validations: {required: true}
+  - type: dropdown
+    id: direction
+    attributes:
+      label: What happened
+      options:
+        - PASS where I expected FAIL
+        - FAIL where I expected PASS
+        - WARN that fires on every target (carries no information)
+        - SKIP where I expected a verdict
+        - Something else
+    validations: {required: true}
+  - type: textarea
+    id: evidence
+    attributes:
+      label: The report, or the console output
+      description: |
+        `report.json` is ideal — it carries the rulepack digest and the probe URLs,
+        so the run can be reconstructed. Redact anything sensitive; the digests are
+        what matter.
+      render: json
+    validations: {required: true}
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and why
+      description: If an Article 50 reading is involved, cite it. Disagreeing with the rulepack is a legitimate report.
+    validations: {required: true}
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`markproof --version`, or the commit"
+    validations: {required: true}

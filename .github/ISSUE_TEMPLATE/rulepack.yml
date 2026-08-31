@@ -1,0 +1,30 @@
+name: A rule reads the law wrong
+description: The rulepack's interpretation of Article 50 is mistaken, outdated, or too broad.
+labels: ["rulepack"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Rulepacks are published under CC-BY-4.0 and cite the paragraph they rest on,
+        specifically so this argument can be had in the open. `docs/RULES_SOURCES.md`
+        records the reasoning behind each rule, including the obligations deliberately
+        left unimplemented — worth reading first, it may already say why.
+
+        Legal disagreement is welcome. This project does not claim to be right about
+        Article 50; it claims to be explicit about what it checks.
+  - type: input
+    id: rule
+    attributes:
+      label: Which rule (or which one is missing)
+    validations: {required: true}
+  - type: textarea
+    id: reading
+    attributes:
+      label: The reading you think is correct
+      description: Cite the Article, and the Guidelines paragraph if there is one.
+    validations: {required: true}
+  - type: textarea
+    id: consequence
+    attributes:
+      label: What changes if you are right
+      description: Does a verdict flip? Does a rule stop applying? Does a new one become checkable?

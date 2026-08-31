@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+title: "markproof: deterministic CI checks for EU AI Act Article 50"
+message: "If you cite this tool or its rulepacks, please cite it as below."
+type: software
+authors:
+  - family-names: Friedrich
+    given-names: Lukas
+    affiliation: Tippel
+repository-code: "https://github.com/Tippel-AI/markproof"
+license: Apache-2.0
+abstract: >-
+  markproof calls a running GenAI endpoint the way a user would and checks what
+  arrives: whether an interactive system discloses its artificial nature, whether
+  delivered media still carry a valid C2PA manifest declaring an AI source type,
+  and whether generated text still carries the operator's own watermark. The
+  evaluation path contains no language model, so identical evidence produces
+  identical verdicts, and every run emits a canonically serialised, Ed25519-signed
+  report that a third party can verify offline. Rulepacks are versioned, cite the
+  paragraph they implement, and ship under CC-BY-4.0.
+keywords:
+  - EU AI Act
+  - Article 50
+  - transparency
+  - C2PA
+  - SynthID
+  - conformance testing
