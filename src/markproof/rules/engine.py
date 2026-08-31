@@ -147,9 +147,9 @@ def _finding_from_disclosure(rule: Rule, evidence: Evidence, outcome: Disclosure
         "outcome": outcome.outcome.value,
         "lang": outcome.lang,
         "inspected_prompts": list(outcome.inspected_prompt_ids),
-        "matched_patterns": [h.pattern_id for h in outcome.hits if h.kind == "positive"],
+        "matched_patterns": sorted({h.pattern_id for h in outcome.hits if h.kind == "positive"}),
     }
-    near_misses = [h.pattern_id for h in outcome.hits if h.kind == "negative"]
+    near_misses = sorted({h.pattern_id for h in outcome.hits if h.kind == "negative"})
     if near_misses:
         detail["near_miss_patterns"] = near_misses
 
@@ -193,7 +193,9 @@ def _finding_from_disclosure(rule: Rule, evidence: Evidence, outcome: Disclosure
 
 
 def _pass_message(outcome: DisclosureResult) -> str:
-    matched = [h.pattern_id for h in outcome.hits if h.kind == "positive"]
+    # Distinct patterns, in stable order — the same pattern hitting two bound
+    # prompts is one piece of evidence, and listing it twice reads like a bug.
+    matched = sorted({h.pattern_id for h in outcome.hits if h.kind == "positive"})
     plural = "s" if len(matched) != 1 else ""
     return f"disclosure found ({len(matched)} pattern{plural} matched: {', '.join(matched)})"
 

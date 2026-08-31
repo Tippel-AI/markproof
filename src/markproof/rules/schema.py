@@ -92,6 +92,22 @@ class DisclosurePatternCheck(BaseModel):
     patterns_file: str = Field(min_length=1)
     position: Position = Position.ANYWHERE_IN_FIRST_RESPONSE
     min_matches: int = Field(default=1, ge=1)
+    prompt_ids: list[str] | None = None
+    """Restrict the check to the answers to these prompts.
+
+    Without it, every rule against a chat endpoint inspects the same opening
+    response, so a rule about answering a *direct* question ("are you human?")
+    would silently re-check the neutral opener and report the first rule twice.
+    Naming the prompts makes such a rule expressible — and makes a report say
+    which question exposed the problem.
+    """
+
+    @field_validator("prompt_ids")
+    @classmethod
+    def _non_empty_prompt_ids(cls, v: list[str] | None) -> list[str] | None:
+        if v is not None and not v:
+            raise ValueError("prompt_ids must not be an empty list; omit the field instead")
+        return v
 
 
 #: Discriminated union — M2/M3 add ``c2pa-verify`` and ``synthid-detect`` here.
@@ -127,6 +143,30 @@ class Rule(BaseModel):
         if len(set(v)) != len(v):
             raise ValueError("applies_to must not repeat a probe kind")
         return v
+
+    @model_validator(mode="after")
+    def _position_matches_probe_kind(self) -> Rule:
+        """Reject a combination that could only ever produce a non-verdict.
+
+        An HTTP chat endpoint has no unprompted greeting: every turn starts with
+        the probe's own message, so ``before_first_user_message`` finds nothing
+        to inspect and the rule warns on every run forever. That reads like a
+        cautious tool and is really a rulepack bug, so it fails loudly at load
+        time. The position belongs to rendered interfaces, where a widget really
+        does greet first.
+        """
+        position = getattr(self.check, "position", None)
+        if (
+            position is Position.BEFORE_FIRST_USER_MESSAGE
+            and ProbeKind.HTTP_CHAT in self.applies_to
+        ):
+            raise ValueError(
+                f"rule {self.id}: position 'before_first_user_message' cannot apply to "
+                "'http-chat' — an API probe always speaks first, so the rule would "
+                "never find a turn to inspect. Use 'anywhere_in_first_response', or "
+                "restrict applies_to to 'ui'."
+            )
+        return self
 
 
 class Rulepack(BaseModel):

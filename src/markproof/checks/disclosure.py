@@ -158,11 +158,20 @@ def load_pattern_set(path: Path) -> PatternSet:
     return PatternSet.model_validate(raw)
 
 
-def _turns_in_scope(evidence: Evidence, position: Position) -> tuple[Turn, ...]:
-    """The turns a rule is allowed to look at, given its position requirement."""
-    if position is Position.BEFORE_FIRST_USER_MESSAGE:
+def _turns_in_scope(evidence: Evidence, check: DisclosurePatternCheck) -> tuple[Turn, ...]:
+    """The turns a rule is allowed to look at.
+
+    ``prompt_ids`` wins when present: naming the prompts is how a rule about a
+    *specific* question stays distinguishable from one about the opening
+    response. Otherwise the position decides.
+    """
+    if check.prompt_ids:
+        wanted = set(check.prompt_ids)
+        return tuple(t for t in evidence.turns if t.prompt_id in wanted)
+    if check.position is Position.BEFORE_FIRST_USER_MESSAGE:
         # Only an unprompted opening counts: a greeting the system sends before
-        # the user has said anything.
+        # the user has said anything. Rulepack validation keeps this away from
+        # http-chat probes, where no such turn can exist.
         return tuple(t for t in evidence.turns if t.is_first)
     return tuple(evidence.turns[:1]) if evidence.turns else ()
 
@@ -177,7 +186,7 @@ def check_disclosure(
     Pure function: no I/O, no clock. Ordering of hits is stable, so two runs over
     the same evidence produce identical results.
     """
-    scope = _turns_in_scope(evidence, check.position)
+    scope = _turns_in_scope(evidence, check)
     inspected = tuple(t.prompt_id for t in scope)
 
     if not scope:
@@ -205,14 +214,19 @@ def check_disclosure(
                 )
 
     hits.sort(key=lambda h: (h.prompt_id, h.kind, h.pattern_id))
-    positive_count = sum(1 for h in hits if h.kind == "positive")
+    # Count distinct patterns, not raw hits: a rule bound to several prompts
+    # would otherwise reach min_matches through one pattern matching repeatedly,
+    # which is one piece of evidence seen twice, not two pieces of evidence.
+    distinct_positive = len({h.pattern_id for h in hits if h.kind == "positive"})
 
-    if positive_count >= check.min_matches:
+    if distinct_positive >= check.min_matches:
         outcome = DisclosureOutcome.DISCLOSED
     elif any(h.kind == "negative" for h in hits):
         outcome = DisclosureOutcome.NEAR_MISS
-    elif check.position is Position.BEFORE_FIRST_USER_MESSAGE and _disclosed_later(
-        evidence, positives, scope
+    elif (
+        not check.prompt_ids
+        and check.position is Position.BEFORE_FIRST_USER_MESSAGE
+        and _disclosed_later(evidence, positives, scope)
     ):
         outcome = DisclosureOutcome.LATE
     else:

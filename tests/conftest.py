@@ -52,7 +52,12 @@ def pattern_set() -> PatternSet:
 
 @pytest.fixture
 def disclosure_check() -> DisclosurePatternCheck:
-    """Check requiring disclosure before the first user message."""
+    """Check requiring disclosure before the first user message.
+
+    Only valid for rendered interfaces — a rulepack pairing this position with
+    an ``http-chat`` probe is rejected at load time, which is why the rulepack
+    fixture below uses the chat-appropriate position instead.
+    """
     return DisclosurePatternCheck(
         type="disclosure-pattern",
         patterns_file="disclosure.de-en.yaml",
@@ -62,7 +67,18 @@ def disclosure_check() -> DisclosurePatternCheck:
 
 
 @pytest.fixture
-def rulepack(disclosure_check: DisclosurePatternCheck) -> Rulepack:
+def chat_check() -> DisclosurePatternCheck:
+    """Check as a chat endpoint rule uses it: inspect the first response."""
+    return DisclosurePatternCheck(
+        type="disclosure-pattern",
+        patterns_file="disclosure.de-en.yaml",
+        position=Position.ANYWHERE_IN_FIRST_RESPONSE,
+        min_matches=1,
+    )
+
+
+@pytest.fixture
+def rulepack(chat_check: DisclosurePatternCheck) -> Rulepack:
     """A minimal but valid rulepack with one blocking disclosure rule."""
     return Rulepack(
         rulepack="test-pack",
@@ -80,7 +96,7 @@ def rulepack(disclosure_check: DisclosurePatternCheck) -> Rulepack:
                 article="Art. 50(1)",
                 guideline_ref="Guidelines §3.2",
                 applies_to=[ProbeKind.HTTP_CHAT],
-                check=disclosure_check,
+                check=chat_check,
                 severity=Severity.FAIL,
             )
         ],
