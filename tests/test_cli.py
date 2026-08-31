@@ -18,6 +18,7 @@ was unprotected is exactly what a pipeline depends on:
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import stat
 from pathlib import Path
@@ -30,6 +31,13 @@ from typer.testing import CliRunner
 from markproof.cli import app
 
 RUNNER = CliRunner()
+
+#: The PDF path needs an optional extra. CI installs it so the path is genuinely
+#: covered; a contributor without it gets a skip rather than a puzzling failure.
+needs_reportlab = pytest.mark.skipif(
+    importlib.util.find_spec("reportlab") is None,
+    reason="needs the [pdf] extra: pip install 'markproof[pdf]'",
+)
 
 _ENDPOINT = "https://api.example.invalid/v1/chat/completions"
 _DISCLOSED = "Hallo! Sie sprechen mit einer KI. Wie kann ich helfen?"
@@ -350,6 +358,7 @@ class TestPdfOutput:
     to matter.
     """
 
+    @needs_reportlab
     @respx.mock
     def test_a_pdf_is_written_when_the_config_asks_for_one(self, tmp_path: Path) -> None:
         respx.post(_ENDPOINT).mock(return_value=_reply(_DISCLOSED))
@@ -371,6 +380,7 @@ class TestPdfOutput:
         assert (out / "report.json").is_file()
         assert not (out / "summary.md").exists()
 
+    @needs_reportlab
     @respx.mock
     def test_a_pdf_request_alone_is_enough_to_write_a_report(self, tmp_path: Path) -> None:
         """Without --report-dir, output_dir from the config is used.

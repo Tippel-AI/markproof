@@ -71,7 +71,10 @@ jobs:
         with:
           enable-cache: true
       - name: pytest
-        run: uv run --python ${{ matrix.python-version }} --extra dev pytest
+        # --extra pdf as well: the PDF renderer is optional at install time but
+        # not optional to test — it is the artefact an auditor reads, and it went
+        # unreachable from the CLI for six milestones without CI noticing.
+        run: uv run --python ${{ matrix.python-version }} --extra dev --extra pdf pytest
 
   determinism:
     name: determinism (byte-identical report)
