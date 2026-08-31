@@ -38,6 +38,11 @@ __all__ = ["MediaProbe"]
 #: than guessed at — an HTML error page with status 200 is a common failure.
 _MEDIA_PREFIXES = ("image/", "video/", "audio/")
 
+#: Content types that carry no information, where falling back to the URL
+#: suffix is reasonable. A server that says "text/html" is telling us something
+#: definite, and guessing past it would let an error page pose as an image.
+_UNINFORMATIVE_TYPES = ("", "application/octet-stream", "binary/octet-stream")
+
 #: Fallback when a server sends media without a usable Content-Type.
 _EXTENSION_TYPES = {
     ".png": "image/png",
@@ -172,9 +177,11 @@ class MediaProbe:
         if response.status_code >= 400:
             raise ProbeError(f"asset {url} returned HTTP {response.status_code}")
 
-        media_type = response.headers.get("content-type", "").split(";")[0].strip()
+        media_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
         if not media_type.startswith(_MEDIA_PREFIXES):
-            guessed = self._guess_type(url)
+            guessed = (
+                self._guess_type(url) if media_type in _UNINFORMATIVE_TYPES else None
+            )
             if guessed is None:
                 raise ProbeError(
                     f"asset {url} has content type {media_type!r}, which is not media — "

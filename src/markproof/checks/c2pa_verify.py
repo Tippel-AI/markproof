@@ -210,7 +210,9 @@ def _evaluate_reader(reader: Any, check: C2paVerifyCheck, *, artifact_id: str) -
     state = reader.get_validation_state()
     state_str = str(state) if state is not None else None
 
-    if not reader.is_valid():
+    # is_valid is a property on the SDK's Reader, not a method — calling it
+    # returns a bool object and raises on the call.
+    if not reader.is_valid:
         return C2paResult(
             outcome=C2paOutcome.INVALID,
             artifact_id=artifact_id,
