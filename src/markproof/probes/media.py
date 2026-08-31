@@ -179,9 +179,7 @@ class MediaProbe:
 
         media_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
         if not media_type.startswith(_MEDIA_PREFIXES):
-            guessed = (
-                self._guess_type(url) if media_type in _UNINFORMATIVE_TYPES else None
-            )
+            guessed = self._guess_type(url) if media_type in _UNINFORMATIVE_TYPES else None
             if guessed is None:
                 raise ProbeError(
                     f"asset {url} has content type {media_type!r}, which is not media — "

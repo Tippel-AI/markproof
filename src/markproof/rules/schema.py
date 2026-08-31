@@ -138,7 +138,21 @@ class C2paVerifyCheck(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["c2pa-verify"]
-    require_source_type: str | None = "trainedAlgorithmicMedia"
+    accept_source_types: list[str] | None = Field(
+        default_factory=lambda: [
+            "trainedAlgorithmicMedia",
+            "compositeWithTrainedAlgorithmicMedia",
+        ]
+    )
+    """Digital source types that satisfy the marking obligation.
+
+    A list rather than a single value, because Art. 50(2) reaches content that
+    was generated *or manipulated*: a human-authored composite containing
+    AI-generated regions is in scope, and a rulepack that could only name one
+    term would have to decide that silently. Set to ``null`` to accept any
+    source type and check presence and validity alone.
+    """
+
     require_assertions: list[str] = Field(default_factory=list)
     trust: TrustConfig = Field(default_factory=TrustConfig)
     allow_remote_manifests: bool = False

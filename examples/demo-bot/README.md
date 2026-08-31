@@ -7,8 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 
 A deliberately half-conformant FastAPI app: the target markproof tests against in
 its own CI, the endpoint in the README GIF, and the fixture source for the
-integration tests. `DEMO_MODE=pass|fail` switches between a conformant and a
-non-conformant run.
+integration tests. It answers chat and it generates images, both under
+`DEMO_MODE=pass|fail`, which switches between a conformant and a non-conformant
+run.
 
 Testing against our own demo endpoint is also what keeps the marketing clean
 (Auflage H3): no blog post, GIF or social asset ever shows a named third-party
@@ -40,19 +41,47 @@ curl -s localhost:8000/health
 curl -s localhost:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"demo","messages":[{"role":"user","content":"Bist du ein Mensch?"}]}'
+curl -s localhost:8000/v1/images/generations \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"demo","prompt":"Ein einfaches Testbild."}'
 ```
 
-## The two modes
+## The modes
 
 | | `DEMO_MODE=pass` (default) | `DEMO_MODE=fail` |
 |---|---|---|
 | First assistant turn | opens with an explicit AI disclosure | no disclosure, anywhere |
 | Later turns | short standing notice, `(KI-generierte Antwort)` | nothing |
 | "Bist du ein Mensch?" | denial plus an AI statement | evasive: "Ich bin hier, um Ihnen zu helfen." |
+| Generated image | valid C2PA manifest, `digitalSourceType = trainedAlgorithmicMedia` | no manifest at all |
 
 `fail` mode is the behaviour the disclosure check (Art. 50(1)) has to catch: a bot
 that never says what it is and deflects when asked outright. If a change to the
 checks makes `fail` mode go green, the checks are wrong, not the bot.
+
+The image half of `fail` is the same idea one obligation over: not an exotic
+failure, but the ordinary one. Somebody wired up a generator that marks its
+output correctly, and then a CDN, a thumbnailer or a "strip metadata for privacy"
+step downstream dropped the chunk. Nobody notices, because the picture still
+looks exactly the same — the two files differ in provenance and in nothing else.
+
+### A third mode, for media only
+
+`DEMO_MODE=wrongtype` behaves like `pass` on the chat endpoint and serves an
+image whose manifest is present, embedded and cryptographically valid, but whose
+action claims `algorithmicMedia` — algorithmically produced, yet not by a trained
+model.
+
+It exists because it is the case only an assertion-level check catches. Every
+"does this asset have Content Credentials?" tool says yes. The signature
+verifies, the hash bindings hold, and the asset still does not do what
+Art. 50(2) asks of AI-generated media. A substring match for `algorithmicmedia`
+waves it through too, which is worth a test of its own.
+
+The chat side stays conformant on purpose: the defect lives in one manifest
+field, and a mode that also broke the chat would stop isolating it. Answers are
+byte-identical to `pass`, with one exception — the completion `id` is content
+addressed over the mode as well, so the same answer carries a different `id`.
 
 The disclosure sits in the *first* answer because that is what the position check
 cares about — a disclosure buried in turn seven is not a disclosure. The endpoint
@@ -73,10 +102,15 @@ determinism gate is measuring noise instead of behaviour. So:
   `DEMO_FIXED_TIME` — Unix seconds or ISO-8601, where a timestamp without an
   offset is read as UTC, never as local time;
 - `id` is content-addressed: `chatcmpl-demo-<sha256 of mode + model + messages + answer>`;
-- token counts are whitespace counts — a stand-in, but a stable one.
+- token counts are whitespace counts — a stand-in, but a stable one;
+- images are read from `media/`, never signed at request time. Signing is not a
+  pure function: every signature carries a fresh ECDSA nonce and a fresh signing
+  time, so a bot that signed per request would answer the same question with
+  different bytes each time.
 
-A bad `DEMO_MODE` or `DEMO_FIXED_TIME` aborts at startup rather than silently
-falling back to a default, so a typo in a CI job fails loudly.
+A bad `DEMO_MODE`, `DEMO_FIXED_TIME` or `DEMO_PUBLIC_BASE_URL` aborts at startup
+rather than silently falling back to a default, so a typo in a CI job fails
+loudly. A missing image fixture does the same.
 
 ## API
 
@@ -86,13 +120,72 @@ falling back to a default, so a typo in a CI job fails loudly.
   returns the usual `{"id","object","created","model","choices","usage"}` shape.
   Unknown request fields (`temperature`, `max_tokens`, …) are accepted and
   ignored; `stream` is *not* supported and an empty `messages` array is a 422.
+- `POST /v1/images/generations` — OpenAI-compatible. Takes
+  `{"model", "prompt", "n", "size", "response_format"}` and returns
+  `{"created", "data": [...]}`.
+- `GET /media/{name}` — the stored assets, `Content-Type: image/png`, bytes
+  untouched.
+
+### `POST /v1/images/generations`
+
+```bash
+curl -s localhost:8000/v1/images/generations \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"demo","prompt":"Ein Leuchtturm im Nebel","n":1,"response_format":"url"}'
+# {"created":1767225600,"data":[{"url":"http://localhost:8000/media/demo-signed.png"}]}
+
+curl -s localhost:8000/v1/images/generations \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"Ein Leuchtturm im Nebel","response_format":"b64_json"}'
+# {"created":1767225600,"data":[{"b64_json":"iVBORw0KGgo…"}]}
+```
+
+`response_format` defaults to `"url"` and also accepts `"b64_json"`, which
+returns the identical bytes inline. Both exist because markproof has to handle
+both, and because the two paths fail differently in the wild: a URL is served
+through a CDN that may re-encode on the way out, while base64 comes straight
+from the generator.
+
+The rest of the fields:
+
+- `prompt` is required and non-empty, then read and discarded. There is no model
+  here; the mode, not the prompt, decides what provenance comes back.
+- `n` (1–10) repeats the one asset that mode serves. Returning `n` *different*
+  images would mean generating them.
+- `size` is accepted and ignored. The fixtures are pre-rendered at 512×512, and
+  honouring another size would mean rendering and signing per request.
+- Anything else in the body is ignored, as on the chat endpoint. An unknown
+  `response_format` or an empty `prompt` is a 422.
+
+URLs are absolute and built from the origin the request arrived on, which is what
+a probe behind a port mapping needs. Set `DEMO_PUBLIC_BASE_URL` when the address
+the outside world uses is not the bound one — a container, a tunnel, a reverse
+proxy — or when a test wants a response that does not move with the `Host`
+header:
+
+```bash
+DEMO_PUBLIC_BASE_URL=https://demo.example uvicorn app:app --port 8000
+# {"created":1767225600,"data":[{"url":"https://demo.example/media/demo-signed.png"}]}
+```
+
+`GET /media/{name}` serves all three assets by name, in every mode; only the
+generation endpoint switches with `DEMO_MODE`. Names are looked up in a table
+read at startup and never joined onto a filesystem path, so no request reaches
+outside `media/`, and bytes go out exactly as stored — re-encoding an image would
+break its C2PA hash bindings and turn a valid manifest into a tampering finding.
+
+The assets themselves, how they were generated, and why the signer is
+deliberately untrusted: [`media/README.md`](media/README.md). That file also
+carries the one thing a C2PA check has to know before it runs against this
+target — the signed fixtures validate as `Valid` while reporting
+`signingCredential.untrusted`, so a check that fails on any failure code fails
+`pass` mode too.
 
 ## Status
 
-M1 (chat) is implemented; the later milestones are not.
+M1 (chat) and the M2 media endpoint are implemented; the later milestones are
+not.
 
-- TODO(M2): media endpoint returning a C2PA-signed asset in `pass` mode and an
-  unsigned one in `fail` mode.
 - TODO(M3): a watermarked variant, so the SynthID end-to-end path has something
   real to detect.
 - TODO(M4): `conformance-demo.yml` runs the Action against this app — the green

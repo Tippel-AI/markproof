@@ -51,6 +51,9 @@ _SOURCE_TYPE_KEYS = ("digitalSourceType", "digital_source_type")
 #: keeps rulepacks readable without accepting a different vocabulary.
 _IPTC_PREFIX = "http://cv.iptc.org/newscodes/digitalsourcetype/"
 
+#: Failure code c2pa-rs reports when no configured anchor vouches for the signer.
+_UNTRUSTED_CODE = "signingCredential.untrusted"
+
 
 class C2paOutcome(StrEnum):
     """What the verification concluded.
@@ -65,6 +68,7 @@ class C2paOutcome(StrEnum):
     INVALID = "invalid"
     WRONG_SOURCE_TYPE = "wrong_source_type"
     MISSING_ASSERTION = "missing_assertion"
+    UNTRUSTED_SIGNER = "untrusted_signer"
     REMOTE_MANIFEST = "remote_manifest"
     UNREADABLE = "unreadable"
 
@@ -89,6 +93,7 @@ class C2paResult(BaseModel):
     signer: str | None = None
     self_signed: bool | None = None
     missing_assertions: tuple[AssertionMiss, ...] = ()
+    failure_codes: tuple[str, ...] = ()
     detail: str | None = None
 
     @property
@@ -129,6 +134,28 @@ def _find_source_type(manifest: dict[str, Any]) -> str | None:
 
 def _assertion_labels(manifest: dict[str, Any]) -> set[str]:
     return {str(a.get("label", "")) for a in manifest.get("assertions", []) or [] if a.get("label")}
+
+
+def _failure_codes(reader: Any) -> list[str]:
+    """Failure codes for the active manifest, in the order the SDK reports them.
+
+    Returns an empty list when the SDK reports nothing — an absent result is not
+    evidence of success, so callers must decide on the validation state first.
+    """
+    try:
+        raw = reader.get_validation_results()
+    except Exception:  # SDK surface is not fully typed; any failure means "no codes"
+        return []
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else raw
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(parsed, dict):
+        return []
+    active = parsed.get("activeManifest") or {}
+    return [str(f.get("code", "")) for f in active.get("failure", []) if f.get("code")]
 
 
 def _signer_of(manifest: dict[str, Any]) -> tuple[str | None, bool | None]:
@@ -207,19 +234,44 @@ def _evaluate_reader(reader: Any, check: C2paVerifyCheck, *, artifact_id: str) -
     active_label = manifest_store.get("active_manifest")
     manifest = (manifest_store.get("manifests") or {}).get(active_label) or {}
     signer, self_signed = _signer_of(manifest)
-    state = reader.get_validation_state()
-    state_str = str(state) if state is not None else None
 
-    # is_valid is a property on the SDK's Reader, not a method — calling it
-    # returns a bool object and raises on the call.
-    if not reader.is_valid:
+    # NOT reader.is_valid: that property reports whether the reader object is
+    # still open (ManagedResource liveness), and returns True for a tampered
+    # asset. Validity lives in the validation state.
+    state_str = str(reader.get_validation_state() or "")
+    failures = _failure_codes(reader)
+
+    if state_str.lower() == "invalid":
+        altered = [c for c in failures if "mismatch" in c]
         return C2paResult(
             outcome=C2paOutcome.INVALID,
             artifact_id=artifact_id,
             validation_state=state_str,
             signer=signer,
             self_signed=self_signed,
-            detail="manifest present but validation failed — the asset was altered after signing",
+            failure_codes=tuple(failures),
+            detail=(
+                "manifest present but validation failed — the asset was altered after signing"
+                + (f" ({', '.join(altered)})" if altered else "")
+            ),
+        )
+
+    # Trust is configuration, not a property of the file: the same asset reads
+    # as Trusted or as untrusted depending on which anchors are loaded. An
+    # untrusted signer is therefore its own finding, never conflated with a
+    # missing or wrong assertion.
+    if _UNTRUSTED_CODE in failures and not check.trust.allow_self_signed:
+        return C2paResult(
+            outcome=C2paOutcome.UNTRUSTED_SIGNER,
+            artifact_id=artifact_id,
+            validation_state=state_str,
+            signer=signer,
+            self_signed=self_signed,
+            failure_codes=tuple(failures),
+            detail=(
+                "manifest is intact but its signer is not in the configured trust list — "
+                "set trust.allow_self_signed to accept development certificates"
+            ),
         )
 
     missing = tuple(
@@ -239,9 +291,10 @@ def _evaluate_reader(reader: Any, check: C2paVerifyCheck, *, artifact_id: str) -
         )
 
     source_type = _find_source_type(manifest)
-    if check.require_source_type is not None:
-        wanted = _normalise_source_type(check.require_source_type)
-        if source_type != wanted:
+    if check.accept_source_types is not None:
+        accepted = {_normalise_source_type(s) for s in check.accept_source_types}
+        if source_type not in accepted:
+            wanted = " or ".join(sorted(accepted))
             return C2paResult(
                 outcome=C2paOutcome.WRONG_SOURCE_TYPE,
                 artifact_id=artifact_id,

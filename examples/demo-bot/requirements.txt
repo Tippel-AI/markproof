@@ -9,6 +9,11 @@
 #
 # Separate from the markproof package itself — nothing in this file is a
 # runtime dependency of markproof.
+#
+# Serving C2PA-signed images adds nothing here on purpose: the demo-bot hands
+# out files that media/make_fixtures.py signed once, offline. Only that script
+# needs `c2pa-python` and `cryptography`, and only when the fixtures are
+# regenerated — see media/README.md.
 
 fastapi==0.141.1
 uvicorn==0.52.4
