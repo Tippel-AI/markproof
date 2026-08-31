@@ -23,6 +23,7 @@ from markproof.rules.schema import ProbeKind
 
 __all__ = [
     "Artifact",
+    "ContentScope",
     "Evidence",
     "Message",
     "Probe",
@@ -130,6 +131,31 @@ class Turn(BaseModel):
         return not any(m.role is Role.USER for m in self.request)
 
 
+class ContentScope(BaseModel):
+    """The sub-region of a rendered document that holds generated content.
+
+    Not a :class:`Turn`: a turn is an exchange, and this is a narrower reading
+    of the same one. Modelling it as a second turn would make it a second
+    *output*, which would quietly tighten every rule scoped to "every output" —
+    a label rule would start demanding a notice inside the article body. It is
+    an alternative view of one observation, so it lives beside the turns.
+
+    Carries its own digest because it is what a text-marking finding cites: the
+    page hash would point at bytes the check never scored.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    selector: str = Field(min_length=1)
+    text: str
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @classmethod
+    def of(cls, text: str, *, selector: str) -> ContentScope:
+        """Build a scope from extracted text, computing the digest."""
+        return cls(selector=selector, text=text, sha256=sha256_hex(text))
+
+
 class Evidence(BaseModel):
     """Everything one probe observed, ready to be evaluated or stored."""
 
@@ -140,6 +166,13 @@ class Evidence(BaseModel):
     target_name: str
     lang: str = Field(pattern=r"^[a-z]{2}$")
     turns: tuple[Turn, ...]
+
+    content_scope: ContentScope | None = None
+    """The generated-text region, when the probe was told where to find it.
+
+    Optional and absent by default: only a rendered document has a meaningful
+    sub-region, and only the operator knows which one it is.
+    """
 
     @property
     def first_turn(self) -> Turn | None:

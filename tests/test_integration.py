@@ -333,7 +333,8 @@ class TestTextRuleWiring:
         text_finding = next(f for f in findings if f.rule_id == "MPF-T-001")
         assert text_finding.result is Result.SKIP
         assert "watermark configuration" in text_finding.message
-        assert text_finding.detail["outcome"] == "no_config"
+        assert text_finding.detail["outcome"] == "unverified"
+        assert text_finding.detail["declared_applicable"] == "not declared"
 
     @pytest.mark.synthid
     def test_runs_when_the_config_is_supplied(

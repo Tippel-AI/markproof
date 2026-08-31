@@ -9,6 +9,7 @@ import pytest
 from markproof.checks.disclosure import Pattern, PatternSet
 from markproof.rules.schema import (
     DisclosurePatternCheck,
+    Obligation,
     Position,
     ProbeKind,
     Rule,
@@ -94,6 +95,7 @@ def rulepack(chat_check: DisclosurePatternCheck) -> Rulepack:
                 id="MPF-D-001",
                 title="AI disclosure before first interaction",
                 article="Art. 50(1)",
+                obligation=Obligation.AI_INTERACTION,
                 guideline_ref="Guidelines §3.2",
                 applies_to=[ProbeKind.HTTP_CHAT],
                 check=chat_check,

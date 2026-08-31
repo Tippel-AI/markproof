@@ -18,11 +18,32 @@ target:
   - id: chat-ui
     type: ui                          # optional, Extra [ui]
     url: https://www.example.com/support
-    chat_selector: "#chat-widget"
+    chat_selector: "#chat-widget"     # scope for the disclosure search — wide
+  - id: article
+    type: ui
+    url: https://www.example.com/blog/latest
+    # Scope for the watermark score — narrow, and deliberately a different
+    # selector: a page is mostly navigation, headings and footer, and averaging
+    # a score across that mixture answers a question nobody asked. Without this
+    # field, text marking on this probe declines instead of guessing.
+    content_selector: "article .body"
   - id: image-gen
     type: media
     url: https://api.example.com/v1/images/generations
     response_format: url
+# Which Article 50 obligations bind this target. Everything not listed here is
+# checked, so silence never removes a rule. A `false` is a claim, not a mute
+# switch: it travels into the signed report, so a green run states its own scope
+# instead of leaving the reader to assume it. A `true` binds you the other way —
+# declare an obligation and supply nothing to check it with, and the run warns
+# rather than skipping quietly.
+#
+#   ai-interaction · synthetic-media-marking · synthetic-text-marking
+#   emotion-recognition · deepfake-labelling · public-interest-text
+applicability:
+  deepfake-labelling: false           # this target generates no deep fakes
+  synthetic-text-marking: true        # …and does watermark its text
+
 text_marking:
   method: synthid                     # synthid | metadata | none-declared
   watermark_config: secrets/watermark_config.json

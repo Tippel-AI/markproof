@@ -319,6 +319,10 @@ voll offenlegungspflichtig.
 | `MPF-D-003` | 50(1) | §3.1.2 Rn. 40 | `http-chat` | `prompt_ids` | `fail` | **ausgeliefert** |
 | `MPF-D-004` | 50(1) | §3.1.1 Rn. 31 | `http-chat` | — | offen | spezifiziert, nicht gebaut (§6) |
 
+Seit dem 31.08.2026 trägt jede Regel zusätzlich ein Pflichtfeld `obligation`,
+das die Pflicht benennt, der sie dient. Die drei ausgelieferten Regeln oben
+tragen `ai-interaction`. Begründung und Taxonomie stehen in §10.
+
 Drei der vier Regeln liegen im Rulepack `art50-eu-2026.07` und feuern: zwei
 gegen ein HTTP-Endpoint, eine gegen eine gerenderte Oberfläche. `MPF-D-004`
 bleibt offen, weil ihr eine Musterdatei fehlt, nicht weil sie unklar wäre.
@@ -702,3 +706,130 @@ Kennzeichnungen `LABELLED` ergeben, die Rn.-117-Fälle (Verweis aufs Manifest)
   Änderungsvorschrift im Amtsblatt nach, statt sich auf diese Zeile zu stützen.
   Für `MPF-L-001` ist der Punkt ohnehin folgenlos: Die Frist betrifft
   Art. 50(2).
+
+---
+
+## 10. Anwendbarkeit — welche Pflicht wen trifft
+
+### 10.1 Der Anlass
+
+Am 31.08.2026 lief markproof gegen drei Seiten, die ein reales Produkt erzeugt
+hatte: eine Bäckerei-Website, eine Anzeigenseite, ein Konfigurator. Alle drei
+lieferten dieselben zwei Befunde — keine KI-Offenlegung gefunden, kein
+Deepfake-Label gefunden. Keine der beiden Pflichten traf eine dieser Seiten.
+`MPF-D-002` setzt Art. 50(1) um, der an Systeme anknüpft, die *mit natürlichen
+Personen interagieren*; die Seiten haben keine Chat-Oberfläche. `MPF-L-001`
+setzt Art. 50(4) UAbs. 1 um, der an Deepfakes anknüpft; die Seiten tragen
+Stockfotografie.
+
+Jede statische Website der Welt bekommt diese zwei Zeilen. Ein Werkzeug, das
+über jedes Ziel dasselbe sagt, sagt nichts — und es erzieht seine Nutzer dazu,
+Warnungen wegzuklicken. Das ist derselbe Fehler wie ein geratenes PASS, nur mit
+umgekehrtem Vorzeichen.
+
+### 10.2 Warum das eine Frage der Norm ist, nicht der Konfiguration
+
+Art. 50 kennt keine allgemeine Transparenzpflicht. Er kennt vier Pflichten mit
+je eigenem Anknüpfungspunkt, eigenem Adressaten und eigenem Auslöser:
+
+| Absatz | Adressat | Knüpft an |
+|---|---|---|
+| 50(1) | Anbieter | System interagiert direkt mit natürlichen Personen |
+| 50(2) | Anbieter | System erzeugt synthetische Inhalte |
+| 50(3) | Betreiber | Emotionserkennung / biometrische Kategorisierung im Einsatz |
+| 50(4) UAbs. 1 | Betreiber | erzeugter Inhalt ist ein Deepfake |
+| 50(4) UAbs. 2 | Betreiber | veröffentlichter Text informiert über Angelegenheiten öffentlichen Interesses |
+
+Ob eine dieser Pflichten greift, ist eine Tatsachen- und Rechtsfrage über den
+Einsatz — nicht über die Antwort, die eine Probe sieht. Eine Sonde, die eine
+gerenderte Seite liest, kann nicht feststellen, ob dahinter ein
+Emotionserkennungssystem läuft, ob das Bild ein Deepfake im Sinne der Rn. 113–116
+ist oder ob der Betreiber Anbieter oder Deployer ist. Genau deshalb ist die
+Antwort eine **Erklärung des Betreibers** und keine Messung.
+
+### 10.3 Die Taxonomie
+
+Feiner als die Absatznummer, weil Art. 50(2) Bild, Ton, Video **und** Text
+erfasst. Wer Seitentexte generiert, aber keine Bilder, muss sagen können, welche
+Hälfte ihn trifft; eine Taxonomie, die bei „50(2)" stehen bliebe, zwänge ihn zu
+Medienbefunden ohne Medien. Art. 50(4) zerfällt aus demselben Grund in zwei
+Glieder: Sie treffen denselben Adressaten, knüpfen aber an verschiedene
+Tatsachen an, und ein Ziel kann dem einen unterliegen und dem anderen nicht.
+
+| `obligation` | Absatz |
+|---|---|
+| `ai-interaction` | 50(1) |
+| `synthetic-media-marking` | 50(2), Bild/Ton/Video |
+| `synthetic-text-marking` | 50(2), Text |
+| `emotion-recognition` | 50(3) |
+| `deepfake-labelling` | 50(4) UAbs. 1 |
+| `public-interest-text` | 50(4) UAbs. 2 |
+
+Jede Regel nennt genau eine. Das Feld ist **Pflicht ohne Vorgabewert**: Ein
+Vorgabewert wäre eine Vermutung darüber, welche Pflicht eine Regel bedient, und
+diese Vermutung entscheidet, ob die Regel gegen ein Ziel läuft, das die Pflicht
+für unanwendbar erklärt hat. Es gibt keinen sicheren Wert — zu weit, und die
+Regel feuert, wo sie nicht hingehört; zu eng, und sie schweigt, wo sie greifen
+müsste. Wer ein Rulepack schreibt, kennt die Antwort.
+
+### 10.4 Drei Zustände, nicht zwei
+
+`applicability` ist eine Abbildung von Pflicht auf Wahrheitswert — aber das
+Fehlen eines Eintrags ist ein **dritter** Zustand und darf nicht stillschweigend
+als einer der beiden gelesen werden:
+
+- **nicht erklärt** → die Regel läuft, unverändert. Schweigen darf nie eine
+  Prüfung entfernen, sonst wird ein Versäumnis zu einem Opt-out, das niemand
+  erklärt hat.
+- **als unanwendbar erklärt** → `SKIP`, sichtbar, mit Nennung der Pflicht und
+  des Umstands, dass es eine Behauptung ist. Nie stilles Weglassen.
+- **als anwendbar erklärt, aber nicht prüfbar** → `WARN`. „Wir markieren unsere
+  Texte" plus „nichts wurde geprüft" plus grüner Build ist genau das stille
+  Durchwinken, gegen das dieses Projekt gebaut ist.
+
+Der dritte Fall ist der Grund, warum die Erklärung kein Stummschalter ist: Sie
+bindet in beide Richtungen. Wer eine Pflicht abwählt, verliert einen Befund; wer
+eine Pflicht bejaht, holt sich eine Warnung, wenn er nichts zu prüfen liefert.
+
+Der dritte Fall bleibt `WARN` und wird nicht `FAIL`. markproof weiß nicht, dass
+keine Markierung existiert — es weiß, dass ihm die Mittel zum Nachsehen fehlten.
+Wessen Anbieter serverseitig markiert, hat eine echte Antwort, die dieses
+Werkzeug nicht sehen kann. Darauf zu scheitern wäre das Raten, das an jeder
+anderen Stelle abgelehnt wird.
+
+### 10.5 Warum die Erklärung in den signierten Bericht gehört
+
+Eine Liste abzuschaltender Regeln würde Befunde verstecken. Diese Erklärung
+schreibt eine Behauptung fest — und wird von der Signatur gedeckt. Ein grüner
+Lauf, der die Deepfake-Regel übersprungen hat, sagt damit unter dem Schlüssel des
+Betreibers, dass dieser keine Deepfakes erklärt hat. Der Prüfumfang hört auf,
+eine Annahme des Lesers zu sein, und wird zu einer Aussage, die jemand
+unterschrieben hat. Der Bericht gewinnt dadurch an Beweiswert, statt zu
+verlieren.
+
+Was er ausdrücklich nicht leistet: markproof prüft die Behauptung nicht und hat
+keine Meinung dazu, ob sie zutrifft. Ein Bericht mit zu eng erklärtem Umfang ist
+ein Dokument über eine enge Prüfung, keine Verteidigung.
+
+### 10.6 Textmarkierung auf gerenderten Seiten
+
+Mit der Anwendbarkeit kam `MPF-T-001` auf `ui`-Proben. Der Weg vom Modell zum
+Leser ist bei veröffentlichtem Text länger als bei einer Chat-Antwort —
+Datenbank, Template, CDN, ein Redaktionsdurchgang — und jeder Schritt kann die
+Markierung verlieren.
+
+Gewertet wird ausschließlich der Bereich, den die Probe über `content_selector`
+benennt. Eine Seite besteht überwiegend aus Navigation, Überschriften und Fußzeile;
+der Mean-g-Wert über diese Mischung ist ein gewichteter Mittelwert aus markiertem
+und unmarkiertem Text. Der Fixture-Sweep verortet teilmarkierten Text bei
+0,586–0,657 gegen ein `watermarked_at` von 0,70 — eine ganze Seite zu werten
+brächte also eine korrekt markierte Seite in das Unsicherheitsband und ließe sie
+per Vorgabe scheitern. Ohne den Selektor verweigert die Regel die Antwort und
+sagt warum.
+
+**Was bewusst keine Regel geworden ist:** eine Markierungskonvention für HTML.
+Für generierten *Text* in einem Webdokument gibt es keinen etablierten
+maschinenlesbaren Standard, wie ihn C2PA für Medien darstellt. Ein selbst
+erfundenes `<meta>`-Tag zu prüfen und sein Fehlen als Nichtkonformität zu melden,
+würde einen Standard herstellen statt gegen einen zu prüfen. Entsteht eine
+Konvention, kann eine Regel ihr folgen.

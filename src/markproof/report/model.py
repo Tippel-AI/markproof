@@ -26,7 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from markproof import __version__
 from markproof.rules.engine import Finding, Result
-from markproof.rules.schema import Rulepack
+from markproof.rules.schema import Applicability, Rulepack
 
 __all__ = ["Report", "RunMetadata", "Signature", "Summary", "build_report"]
 
@@ -105,6 +105,19 @@ class Report(BaseModel):
     schema_version: int = REPORT_SCHEMA_VERSION
     target: str
     rulepack: dict[str, str]
+
+    applicability: dict[str, bool] | None = None
+    """The target's declaration of which Article 50 obligations bind it.
+
+    Absent when nobody declared anything, which keeps a report from a plain
+    config byte-identical to what it was before this field existed.
+
+    Present, it is covered by the signature — and that is the point. A report
+    that skipped the deep fake rule now says, over the operator's own key, that
+    they declared no deep fakes. The scope of a green run stops being an
+    assumption the reader has to supply and becomes a claim someone signed.
+    """
+
     run: RunMetadata
     findings: list[Finding]
     summary: Summary
@@ -141,6 +154,7 @@ def build_report(
     rulepack: Rulepack,
     findings: list[Finding],
     timestamp: str | None = None,
+    applicability: Applicability | None = None,
 ) -> Report:
     """Assemble a report from a completed run.
 
@@ -150,9 +164,19 @@ def build_report(
         findings: Findings in evaluator order — already stable.
         timestamp: ISO-8601 UTC. Injectable so tests can pin it; defaults to
             now, because an unsigned artefact without a time is not evidence.
+        applicability: The scope the operator declared. Recorded verbatim, and
+            omitted entirely when empty — an empty declaration and no
+            declaration are the same statement, and writing one out would
+            suggest a claim nobody made.
     """
+    declared = (
+        {o.value: v for o, v in sorted(applicability.root.items())}
+        if applicability is not None and applicability.root
+        else None
+    )
     return Report(
         target=target,
+        applicability=declared,
         rulepack={
             "id": rulepack.rulepack,
             "version": rulepack.version,

@@ -228,6 +228,26 @@ class FindingView:
         return RESULT_PALETTE.get(self.result, _UNKNOWN_PALETTE)
 
 
+def _join_names(names: list[str]) -> str:
+    """Join obligation names so the sentence reads as English."""
+    if len(names) <= 1:
+        return "".join(names)
+    return f"{', '.join(names[:-1])} or {names[-1]}"
+
+
+def _declared_scope(report: Any) -> tuple[tuple[str, bool], ...]:
+    """The applicability declaration, if the report carries one.
+
+    Tolerant like every reader in this module: the PDF renders whatever shape it
+    is handed, including reports written by an older build that had no such
+    field.
+    """
+    declared = _lookup(report, "applicability")
+    if not isinstance(declared, dict):
+        return ()
+    return tuple((str(k), bool(v)) for k, v in sorted(declared.items()))
+
+
 @dataclass(frozen=True)
 class ReportView:
     """Everything the page needs, already reduced to strings."""
@@ -238,6 +258,14 @@ class ReportView:
     generated_at: str
     markproof_version: str
     findings: tuple[FindingView, ...] = ()
+    declared_scope: tuple[tuple[str, bool], ...] = ()
+    """Obligations the target declared, and whether each was said to apply.
+
+    Printed with the verdict rather than in a footnote. This page is the artefact
+    somebody hands to an auditor, and a PASS whose scope is only discoverable in
+    the JSON alongside it would read as broader than it is.
+    """
+
     provenance: tuple[tuple[str, str], ...] = ()
     attribution: str = ""
     signed: bool = False
@@ -378,6 +406,7 @@ def report_view(report: Any) -> ReportView:
             default="(unknown)",
         ),
         findings=findings,
+        declared_scope=_declared_scope(report),
         provenance=provenance,
         attribution=_string(report, "rulepack_attribution", "attribution", "rulepack.attribution"),
         signed=signed,
@@ -747,6 +776,33 @@ def _story(rl: Any, view: ReportView, width: float) -> list[Any]:
     )
     story.append(rl.Spacer(1, 8))
     story.append(_counts_strip(rl, styles, view, width))
+
+    if view.declared_scope:
+        out = [name for name, applies in view.declared_scope if not applies]
+        inside = [name for name, applies in view.declared_scope if applies]
+        sentences = []
+        if out:
+            sentences.append(
+                f"The target declares no {_join_names(out)} "
+                f"obligation{'s' if len(out) > 1 else ''}, so the rules serving "
+                f"{'them' if len(out) > 1 else 'it'} were skipped rather than measured."
+            )
+        if inside:
+            sentences.append(
+                f"It declares that {_join_names(inside)} "
+                f"{'apply' if len(inside) > 1 else 'applies'}."
+            )
+        sentences.append(
+            "This is the operator's own statement, and it is covered by the signature."
+        )
+        story.append(rl.Spacer(1, 10))
+        story.append(
+            rl.Paragraph(
+                f"<b>Declared scope.</b> {_esc(' '.join(sentences))}",
+                styles["body"],
+            )
+        )
+
     story.append(rl.Spacer(1, 18))
 
     story.append(rl.Paragraph("Findings", styles["h2"]))

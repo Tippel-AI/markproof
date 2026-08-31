@@ -39,9 +39,12 @@ from markproof.checks.synthid import (
 )
 from markproof.probes.base import Evidence
 from markproof.rules.schema import (
+    Applicability,
     C2paVerifyCheck,
     DisclosurePatternCheck,
     LabelPresenceCheck,
+    Obligation,
+    ProbeKind,
     Rule,
     Rulepack,
     Severity,
@@ -94,6 +97,15 @@ class Finding(BaseModel):
     rule_id: str
     title: str
     article: str
+    obligation: Obligation | None = None
+    """Which Article 50 duty this finding is about.
+
+    ``None`` for operational findings: ``MPF-X-001`` reports that a probe could
+    not run, which is a fact about the run and not about an obligation. Giving
+    it one would put it in scope for a declaration that has nothing to say
+    about it.
+    """
+
     guideline_ref: str | None
     probe_id: str
     result: Result
@@ -157,6 +169,7 @@ def evaluate(
     pattern_sets: dict[str, PatternSet],
     watermark_config: WatermarkConfig | None = None,
     label_sets: dict[str, LabelPatternSet] | None = None,
+    applicability: Applicability | None = None,
 ) -> list[Finding]:
     """Evaluate every applicable rule against every probe's evidence.
 
@@ -167,6 +180,9 @@ def evaluate(
         rulepack: The validated rulepack.
         evidences: One entry per probe that ran.
         pattern_sets: Loaded pattern files, keyed by ``patterns_file`` name.
+        applicability: The target's declaration of which Article 50 obligations
+            bind it. ``None`` — and any obligation it does not mention — leaves
+            the rule running, so silence never removes a check.
 
     Returns:
         Findings sorted by (rule id, probe id) — a stable order that does not
@@ -178,14 +194,96 @@ def evaluate(
     """
     findings: list[Finding] = []
 
+    declaration = applicability if applicability is not None else Applicability()
+
     for evidence in evidences:
         for rule in rulepack.rules_for(evidence.probe_kind):
+            if not declaration.applies(rule.obligation):
+                findings.append(_out_of_scope_finding(rule, evidence))
+                continue
             findings.append(
-                _evaluate_rule(rule, evidence, pattern_sets, watermark_config, label_sets)
+                _evaluate_rule(
+                    rule, evidence, pattern_sets, watermark_config, label_sets, declaration
+                )
             )
 
     findings.sort(key=lambda f: (f.rule_id, f.probe_id))
     return findings
+
+
+def _out_of_scope_finding(rule: Rule, evidence: Evidence) -> Finding:
+    """A rule the target declared does not bind it.
+
+    Visible, attributed and counted — never dropped. The point of the
+    declaration is that a reader can see what a green run left out and on whose
+    word, so a silently shorter findings list would defeat it. The message names
+    the obligation and says plainly that this is the operator's claim, not a
+    measurement.
+    """
+    return Finding(
+        rule_id=rule.id,
+        title=rule.title,
+        article=rule.article,
+        obligation=rule.obligation,
+        guideline_ref=rule.guideline_ref,
+        probe_id=evidence.probe_id,
+        result=Result.SKIP,
+        message=(
+            f"not applicable — the target declares no {rule.obligation.value} "
+            f"obligation ({rule.article})"
+        ),
+        detail={"outcome": "not_applicable", "declared_by": "target configuration"},
+    )
+
+
+def _unverified_finding(
+    rule: Rule,
+    evidence: Evidence,
+    applicability: Applicability,
+    *,
+    missing: str,
+    remedy: str,
+    hashes: tuple[str, ...] = (),
+) -> Finding:
+    """A check that declined because the run lacked what it needed to look.
+
+    The same absence means two different things, and the declaration is what
+    tells them apart. An operator who never claimed the obligation gets a SKIP:
+    nothing was promised and nothing is owed. One who declared it applicable
+    gets a WARN, because "we mark our text", "nothing was checked" and a green
+    build is the silent pass this project exists to remove.
+
+    Not a FAIL either way. markproof does not know that no marking exists — it
+    knows it was not given the means to look, and a provider marking
+    server-side is a real answer this tool cannot see. Failing on that would be
+    the guess we refuse everywhere else.
+    """
+    declared = applicability.is_declared_applicable(rule.obligation)
+    if declared:
+        result = Result.WARN
+        message = (
+            f"the target declares a {rule.obligation.value} obligation, but {missing} — "
+            f"it was not verified. {remedy}"
+        )
+    else:
+        result = Result.SKIP
+        message = f"{missing}. {remedy}"
+
+    return Finding(
+        rule_id=rule.id,
+        title=rule.title,
+        article=rule.article,
+        obligation=rule.obligation,
+        guideline_ref=rule.guideline_ref,
+        probe_id=evidence.probe_id,
+        result=result,
+        message=message,
+        detail={
+            "outcome": "unverified",
+            "declared_applicable": "yes" if declared else "not declared",
+        },
+        evidence_sha256=hashes,
+    )
 
 
 def _evaluate_rule(
@@ -194,6 +292,7 @@ def _evaluate_rule(
     pattern_sets: dict[str, PatternSet],
     watermark_config: WatermarkConfig | None = None,
     label_sets: dict[str, LabelPatternSet] | None = None,
+    applicability: Applicability | None = None,
 ) -> Finding:
     """Apply one rule to one probe's evidence."""
     check = rule.check
@@ -221,25 +320,21 @@ def _evaluate_rule(
         return _finding_from_labels(rule, evidence, check_labels(evidence, check, label_set))
 
     if isinstance(check, SynthIdDetectCheck):
+        declaration = applicability if applicability is not None else Applicability()
         if watermark_config is None:
-            # Visible skip, not a silent one, and not a hard stop: a rulepack is
-            # taken as a whole, and an operator who does not watermark text still
-            # needs the disclosure and media rules to run. The report says
-            # plainly that this check did not happen.
-            return Finding(
-                rule_id=rule.id,
-                title=rule.title,
-                article=rule.article,
-                guideline_ref=rule.guideline_ref,
-                probe_id=evidence.probe_id,
-                result=Result.SKIP,
-                message=(
-                    "no watermark configuration supplied — set "
-                    "text_marking.watermark_config in markproof.yaml to verify text marking"
+            # Visible, not silent, and not a hard stop: a rulepack is taken as a
+            # whole, and an operator who does not watermark text still needs the
+            # disclosure and media rules to run.
+            return _unverified_finding(
+                rule,
+                evidence,
+                declaration,
+                missing="no watermark configuration was supplied",
+                remedy=(
+                    "Set text_marking.watermark_config in markproof.yaml to verify text marking."
                 ),
-                detail={"outcome": "no_config"},
             )
-        return _finding_from_synthid(rule, evidence, check, watermark_config)
+        return _finding_from_synthid(rule, evidence, check, watermark_config, declaration)
 
     raise UnsupportedCheckError(
         f"rule {rule.id} requests check type {getattr(check, 'type', type(check).__name__)!r}, "
@@ -260,6 +355,7 @@ def _finding_from_c2pa(rule: Rule, evidence: Evidence, check: C2paVerifyCheck) -
             rule_id=rule.id,
             title=rule.title,
             article=rule.article,
+            obligation=rule.obligation,
             guideline_ref=rule.guideline_ref,
             probe_id=evidence.probe_id,
             result=Result.WARN,
@@ -308,6 +404,7 @@ def _finding_from_c2pa(rule: Rule, evidence: Evidence, check: C2paVerifyCheck) -
             rule_id=rule.id,
             title=rule.title,
             article=rule.article,
+            obligation=rule.obligation,
             guideline_ref=rule.guideline_ref,
             probe_id=evidence.probe_id,
             result=Result.PASS,
@@ -322,6 +419,7 @@ def _finding_from_c2pa(rule: Rule, evidence: Evidence, check: C2paVerifyCheck) -
         rule_id=rule.id,
         title=rule.title,
         article=rule.article,
+        obligation=rule.obligation,
         guideline_ref=rule.guideline_ref,
         probe_id=evidence.probe_id,
         result=Result.WARN if inconclusive else _SEVERITY_TO_RESULT[rule.severity],
@@ -354,6 +452,7 @@ def _finding_from_disclosure(rule: Rule, evidence: Evidence, outcome: Disclosure
             rule_id=rule.id,
             title=rule.title,
             article=rule.article,
+            obligation=rule.obligation,
             guideline_ref=rule.guideline_ref,
             probe_id=evidence.probe_id,
             result=Result.PASS,
@@ -367,6 +466,7 @@ def _finding_from_disclosure(rule: Rule, evidence: Evidence, outcome: Disclosure
             rule_id=rule.id,
             title=rule.title,
             article=rule.article,
+            obligation=rule.obligation,
             guideline_ref=rule.guideline_ref,
             probe_id=evidence.probe_id,
             result=Result.WARN,
@@ -379,6 +479,7 @@ def _finding_from_disclosure(rule: Rule, evidence: Evidence, outcome: Disclosure
         rule_id=rule.id,
         title=rule.title,
         article=rule.article,
+        obligation=rule.obligation,
         guideline_ref=rule.guideline_ref,
         probe_id=evidence.probe_id,
         result=_SEVERITY_TO_RESULT[rule.severity],
@@ -420,6 +521,7 @@ def _finding_from_labels(rule: Rule, evidence: Evidence, outcome: LabelResult) -
             rule_id=rule.id,
             title=rule.title,
             article=rule.article,
+            obligation=rule.obligation,
             guideline_ref=rule.guideline_ref,
             probe_id=evidence.probe_id,
             result=Result.PASS,
@@ -433,6 +535,7 @@ def _finding_from_labels(rule: Rule, evidence: Evidence, outcome: LabelResult) -
             rule_id=rule.id,
             title=rule.title,
             article=rule.article,
+            obligation=rule.obligation,
             guideline_ref=rule.guideline_ref,
             probe_id=evidence.probe_id,
             result=Result.SKIP,
@@ -448,6 +551,7 @@ def _finding_from_labels(rule: Rule, evidence: Evidence, outcome: LabelResult) -
             rule_id=rule.id,
             title=rule.title,
             article=rule.article,
+            obligation=rule.obligation,
             guideline_ref=rule.guideline_ref,
             probe_id=evidence.probe_id,
             result=Result.WARN,
@@ -463,6 +567,7 @@ def _finding_from_labels(rule: Rule, evidence: Evidence, outcome: LabelResult) -
         rule_id=rule.id,
         title=rule.title,
         article=rule.article,
+        obligation=rule.obligation,
         guideline_ref=rule.guideline_ref,
         probe_id=evidence.probe_id,
         result=_SEVERITY_TO_RESULT[rule.severity],
@@ -477,45 +582,77 @@ def _finding_from_synthid(
     evidence: Evidence,
     check: SynthIdDetectCheck,
     config: WatermarkConfig,
+    applicability: Applicability,
 ) -> Finding:
-    """Verify text marking on the responses this rule covers."""
-    turns = list(evidence.turns)
-    if not turns:
-        return Finding(
-            rule_id=rule.id,
-            title=rule.title,
-            article=rule.article,
-            guideline_ref=rule.guideline_ref,
-            probe_id=evidence.probe_id,
-            result=Result.WARN,
-            message="no response to inspect for text marking",
-            detail={"outcome": "no_evidence"},
-        )
+    """Verify text marking on the text this rule covers.
 
-    # The longest response gives the detector the most to work with; a short
-    # one would be skipped anyway, and reporting the strongest available sample
-    # is the fairest reading of the endpoint's behaviour.
-    turn = max(turns, key=lambda t: len(t.response.content))
-    result: SynthIdResult = detect_watermark(turn.response.content, check, config)
+    Which text that is depends on the surface. A chat endpoint returns nothing
+    but generated text, so the response *is* the sample. A rendered page is
+    mostly not generated — navigation, headings, footer, cookie banner — and a
+    mean-g score over that mixture is a weighted average of marked and unmarked
+    text. The fixture sweep put partly-marked text at 0.586-0.657 against a
+    ``watermarked_at`` of 0.70, so scoring a whole document would land a
+    correctly marked page in the uncertain band and, by default, fail it. So on
+    a rendered page this scores the region the operator named, and nothing else.
+    """
+    if evidence.probe_kind is ProbeKind.UI:
+        scope = evidence.content_scope
+        if scope is None:
+            return _unverified_finding(
+                rule,
+                evidence,
+                applicability,
+                missing="the probe recorded no generated-text region",
+                remedy=(
+                    "Set content_selector on the UI probe to name the element holding "
+                    "generated text. Scoring a whole page averages template text with "
+                    "generated text and yields a number that means nothing."
+                ),
+            )
+        sample, sample_sha256 = scope.text, scope.sha256
+        source: dict[str, str | int | list[str]] = {"content_selector": scope.selector}
+    else:
+        turns = list(evidence.turns)
+        if not turns:
+            return Finding(
+                rule_id=rule.id,
+                title=rule.title,
+                article=rule.article,
+                obligation=rule.obligation,
+                guideline_ref=rule.guideline_ref,
+                probe_id=evidence.probe_id,
+                result=Result.WARN,
+                message="no response to inspect for text marking",
+                detail={"outcome": "no_evidence"},
+            )
+        # The longest response gives the detector the most to work with; a short
+        # one would be skipped anyway, and reporting the strongest available
+        # sample is the fairest reading of the endpoint's behaviour.
+        turn = max(turns, key=lambda t: len(t.response.content))
+        sample, sample_sha256 = turn.response.content, turn.response_sha256
+        source = {"prompt_id": turn.prompt_id}
+
+    result: SynthIdResult = detect_watermark(sample, check, config)
 
     detail: dict[str, str | int | list[str]] = {
         "outcome": result.outcome.value,
         "detector": result.detector,
         "token_count": result.token_count,
-        "prompt_id": turn.prompt_id,
+        **source,
     }
     if result.score is not None:
         detail["score"] = str(result.score)
     if result.thresholds is not None:
         detail["thresholds"] = [str(result.thresholds[0]), str(result.thresholds[1])]
 
-    hashes = (turn.response_sha256,)
+    hashes = (sample_sha256,)
 
     if result.outcome is SynthIdOutcome.WATERMARKED:
         return Finding(
             rule_id=rule.id,
             title=rule.title,
             article=rule.article,
+            obligation=rule.obligation,
             guideline_ref=rule.guideline_ref,
             probe_id=evidence.probe_id,
             result=Result.PASS,
@@ -529,6 +666,7 @@ def _finding_from_synthid(
             rule_id=rule.id,
             title=rule.title,
             article=rule.article,
+            obligation=rule.obligation,
             guideline_ref=rule.guideline_ref,
             probe_id=evidence.probe_id,
             result=Result.SKIP,
@@ -542,6 +680,7 @@ def _finding_from_synthid(
             rule_id=rule.id,
             title=rule.title,
             article=rule.article,
+            obligation=rule.obligation,
             guideline_ref=rule.guideline_ref,
             probe_id=evidence.probe_id,
             result=Result.WARN,
@@ -561,6 +700,7 @@ def _finding_from_synthid(
             rule_id=rule.id,
             title=rule.title,
             article=rule.article,
+            obligation=rule.obligation,
             guideline_ref=rule.guideline_ref,
             probe_id=evidence.probe_id,
             result=outcome_result,
@@ -573,6 +713,7 @@ def _finding_from_synthid(
         rule_id=rule.id,
         title=rule.title,
         article=rule.article,
+        obligation=rule.obligation,
         guideline_ref=rule.guideline_ref,
         probe_id=evidence.probe_id,
         result=_SEVERITY_TO_RESULT[rule.severity],

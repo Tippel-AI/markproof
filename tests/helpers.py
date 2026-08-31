@@ -4,10 +4,10 @@
 
 from __future__ import annotations
 
-from markproof.probes.base import Evidence, Message, Role, Turn, sha256_hex
+from markproof.probes.base import ContentScope, Evidence, Message, Role, Turn, sha256_hex
 from markproof.rules.schema import ProbeKind
 
-__all__ = ["make_evidence", "make_turn"]
+__all__ = ["make_evidence", "make_turn", "make_ui_evidence"]
 
 
 def make_turn(
@@ -39,4 +39,29 @@ def make_evidence(*turns: Turn, lang: str = "de", probe_id: str = "chat") -> Evi
         target_name="test-target",
         lang=lang,
         turns=turns,
+    )
+
+
+def make_ui_evidence(
+    page_text: str,
+    *,
+    content: str | None = None,
+    selector: str = "article .body",
+    lang: str = "de",
+    probe_id: str = "page",
+) -> Evidence:
+    """A rendered-page observation, optionally with a named generated region.
+
+    ``content=None`` models a UI probe configured without ``content_selector``:
+    the page was read, but nothing says which part of it the model wrote.
+    """
+    return Evidence(
+        probe_id=probe_id,
+        probe_kind=ProbeKind.UI,
+        target_name="test-target",
+        lang=lang,
+        turns=(make_turn("ui-initial-view", page_text),),
+        content_scope=(
+            ContentScope.of(content, selector=selector) if content is not None else None
+        ),
     )
