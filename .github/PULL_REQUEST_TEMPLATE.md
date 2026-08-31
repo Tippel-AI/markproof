@@ -1,4 +1,9 @@
 <!--
+SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
+SPDX-License-Identifier: Apache-2.0
+-->
+
+<!--
 Thanks for contributing. Two things this project cares about more than most:
 
   * A verdict must never claim more than was measured. If a change makes a check
