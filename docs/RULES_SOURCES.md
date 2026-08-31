@@ -827,9 +827,23 @@ brächte also eine korrekt markierte Seite in das Unsicherheitsband und ließe s
 per Vorgabe scheitern. Ohne den Selektor verweigert die Regel die Antwort und
 sagt warum.
 
-**Was bewusst keine Regel geworden ist:** eine Markierungskonvention für HTML.
-Für generierten *Text* in einem Webdokument gibt es keinen etablierten
-maschinenlesbaren Standard, wie ihn C2PA für Medien darstellt. Ein selbst
-erfundenes `<meta>`-Tag zu prüfen und sein Fehlen als Nichtkonformität zu melden,
-würde einen Standard herstellen statt gegen einen zu prüfen. Entsteht eine
-Konvention, kann eine Regel ihr folgen.
+**Korrektur vom 31.08.2026.** An dieser Stelle stand zunächst, für generierten
+Text in einem Webdokument gebe es keinen etablierten maschinenlesbaren Standard,
+wie ihn C2PA für Medien darstellt. Das war falsch, und zwar schon beim
+Schreiben. Die **C2PA Technical Specification 2.4** vom April 2026 enthält in
+Anhang **A.7** ein normatives Bindungsverfahren für HTML-Dokumente und in
+**§18.28** eine eigens dafür geschaffene Assertion `c2pa.ai-disclosure` mit den
+Feldern `modelType` und `humanOversightLevel`, abgebildet auf IPTC
+`digitalSourceType: trainedAlgorithmicMedia`. Damit existiert genau die
+Konvention, deren Fehlen hier behauptet wurde — geprüft am 31.08.2026 gegen
+`spec.c2pa.org`.
+
+Der Satz, der Bestand hat, ist der engere: markproof erfindet keine eigene
+`<meta>`-Konvention. Gegen eine fremde, veröffentlichte zu prüfen, ist dagegen
+genau die Aufgabe. Die Regel dafür ist offen (Issue #18).
+
+Was allgemein *nicht* existiert, ist eine Konvention außerhalb von C2PA: Der
+WHATWG-Vorschlag für ein Meta-Tag (#9479, offen seit dem 02.07.2023) wartet
+weiter auf Implementierungsinteresse, und der IETF-Entwurf für einen
+AI-Disclosure-Header (`draft-abaris-aicdh-01`) ist ohne Annahme abgelaufen.
+Die Lücke besteht also für den allgemeinen Web-Fall, nicht für C2PA.
