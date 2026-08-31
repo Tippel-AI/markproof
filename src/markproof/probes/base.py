@@ -80,6 +80,28 @@ class Artifact(BaseModel):
     size_bytes: int = Field(ge=0)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     source_url: str | None = None
+    data: bytes | None = Field(default=None, exclude=True, repr=False)
+    """The payload itself, carried in memory for the checks to inspect.
+
+    Excluded from serialisation: a report is meant to be read and diffed, and
+    embedding megabytes of base64 would defeat both. The digest above is what
+    ties a finding to these bytes; ``markproof run`` writes the bytes themselves
+    into the artefacts directory.
+    """
+
+    @classmethod
+    def of(
+        cls, data: bytes, *, artifact_id: str, media_type: str, source_url: str | None = None
+    ) -> Artifact:
+        """Build an artefact from payload bytes, computing size and digest."""
+        return cls(
+            id=artifact_id,
+            media_type=media_type,
+            size_bytes=len(data),
+            sha256=sha256_hex(data),
+            source_url=source_url,
+            data=data,
+        )
 
 
 class Turn(BaseModel):

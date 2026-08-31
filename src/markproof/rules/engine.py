@@ -18,6 +18,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from markproof.checks.c2pa_verify import C2paOutcome, C2paResult, verify_media
 from markproof.checks.disclosure import (
     DisclosureOutcome,
     DisclosureResult,
@@ -25,7 +26,13 @@ from markproof.checks.disclosure import (
     check_disclosure,
 )
 from markproof.probes.base import Evidence
-from markproof.rules.schema import DisclosurePatternCheck, Rule, Rulepack, Severity
+from markproof.rules.schema import (
+    C2paVerifyCheck,
+    DisclosurePatternCheck,
+    Rule,
+    Rulepack,
+    Severity,
+)
 
 __all__ = ["Finding", "Result", "UnsupportedCheckError", "evaluate", "exit_code_for"]
 
@@ -78,6 +85,10 @@ _SEVERITY_TO_RESULT = {
 #: always become WARN, regardless of severity: the tool saw something a human
 #: needs to look at, and inventing a verdict would be the guess we refuse to make.
 _INCONCLUSIVE = {DisclosureOutcome.NEAR_MISS, DisclosureOutcome.NO_EVIDENCE}
+
+#: C2PA outcomes that describe a problem with the evidence rather than with the
+#: asset. An unreadable download says nothing about compliance, so it warns.
+_C2PA_INCONCLUSIVE = {C2paOutcome.UNREADABLE}
 
 
 def evaluate(
@@ -132,9 +143,98 @@ def _evaluate_rule(
             rule, evidence, check_disclosure(evidence, check, pattern_set)
         )
 
+    if isinstance(check, C2paVerifyCheck):
+        return _finding_from_c2pa(rule, evidence, check)
+
     raise UnsupportedCheckError(
         f"rule {rule.id} requests check type {getattr(check, 'type', type(check).__name__)!r}, "
         "which this build does not implement"
+    )
+
+
+def _finding_from_c2pa(rule: Rule, evidence: Evidence, check: C2paVerifyCheck) -> Finding:
+    """Verify every artefact the probe collected and fold the results into one finding.
+
+    An asset that fails drags the whole finding down: shipping ten images of
+    which one lost its manifest is not nine-tenths compliant, it is a delivery
+    regression that reaches some users.
+    """
+    artifacts = [a for turn in evidence.turns for a in turn.artifacts]
+    if not artifacts:
+        return Finding(
+            rule_id=rule.id,
+            title=rule.title,
+            article=rule.article,
+            guideline_ref=rule.guideline_ref,
+            probe_id=evidence.probe_id,
+            result=Result.WARN,
+            message="no media collected — nothing could be checked",
+            detail={"outcome": "no_media"},
+        )
+
+    results: list[C2paResult] = []
+    for artifact in artifacts:
+        if artifact.data is None:
+            results.append(
+                C2paResult(
+                    outcome=C2paOutcome.UNREADABLE,
+                    artifact_id=artifact.id,
+                    detail="artefact bytes are not available in this evidence",
+                )
+            )
+            continue
+        results.append(
+            verify_media(
+                artifact.data,
+                artifact.media_type,
+                check,
+                artifact_id=artifact.id,
+            )
+        )
+
+    failed = [r for r in results if not r.passed]
+    detail: dict[str, str | int | list[str]] = {
+        "checked": len(results),
+        "outcome": "verified" if not failed else failed[0].outcome.value,
+        "assets": sorted(r.artifact_id for r in results),
+    }
+    if failed:
+        detail["failed_assets"] = sorted(r.artifact_id for r in failed)
+        types = sorted({r.source_type for r in failed if r.source_type})
+        if types:
+            detail["declared_source_types"] = types
+
+    hashes = tuple(a.sha256 for turn in evidence.turns for a in turn.artifacts)
+
+    if not failed:
+        plural = "s" if len(results) != 1 else ""
+        return Finding(
+            rule_id=rule.id,
+            title=rule.title,
+            article=rule.article,
+            guideline_ref=rule.guideline_ref,
+            probe_id=evidence.probe_id,
+            result=Result.PASS,
+            message=f"{len(results)} asset{plural} carry a valid, correctly marked manifest",
+            detail=detail,
+            evidence_sha256=hashes,
+        )
+
+    first = failed[0]
+    inconclusive = all(r.outcome in _C2PA_INCONCLUSIVE for r in failed)
+    return Finding(
+        rule_id=rule.id,
+        title=rule.title,
+        article=rule.article,
+        guideline_ref=rule.guideline_ref,
+        probe_id=evidence.probe_id,
+        result=Result.WARN if inconclusive else _SEVERITY_TO_RESULT[rule.severity],
+        message=(
+            f"{len(failed)} of {len(results)} asset(s) failed: "
+            f"{first.detail or first.outcome.value}"
+        ),
+        detail=detail,
+        evidence_sha256=hashes,
     )
 
 
