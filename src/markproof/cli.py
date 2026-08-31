@@ -16,6 +16,7 @@ The module-level object ``app`` is the console-script target declared in
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import sys
@@ -35,6 +36,7 @@ from markproof.config import (
     HttpChatProbeConfig,
     MarkproofConfig,
     MediaProbeConfig,
+    ReportConfig,
     UiProbeConfig,
     load_config,
 )
@@ -42,7 +44,7 @@ from markproof.probes.base import Evidence, ProbeError
 from markproof.probes.http_chat import HttpChatProbe
 from markproof.probes.media import MediaProbe
 from markproof.probes.ui import UiProbe
-from markproof.report.model import ProbeRecord, build_report
+from markproof.report.model import ProbeRecord, Report, build_report
 from markproof.report.sign import (
     SigningError,
     generate_keypair,
@@ -105,6 +107,47 @@ def main(
     ] = False,
 ) -> None:
     """markproof — Article 50 conformance checks for live endpoints."""
+
+
+def _signing_key(report_config: ReportConfig) -> str:
+    """Where the signing key comes from, config first, environment second.
+
+    ``report.sign_key`` was validated and then ignored, so an operator who wrote
+    ``sign_key: env:CI_SIGNING_KEY`` in their config got an unsigned report and no
+    hint why. The environment variable stays the fallback because that is what CI
+    documentation everywhere assumes.
+    """
+    declared = (report_config.sign_key or "").strip()
+    if declared.startswith("env:"):
+        return os.environ.get(declared[4:], "").strip()
+    if declared:
+        return declared
+    return os.environ.get("MARKPROOF_SIGNING_KEY", "").strip()
+
+
+def _render_pdf(report: Report, path: Path, *, engine: str) -> None:
+    """Write the PDF, or explain which extra is missing.
+
+    Imported here rather than at module scope: both renderers are optional, and a
+    top-level import would make the default output path — the one that must work
+    on any runner — depend on a package the base install does not ship.
+    """
+    module = "pdf_reportlab" if engine == "pdf" else "pdf_weasy"
+    extra = "pdf" if engine == "pdf" else "pdf-html"
+    try:
+        renderer = importlib.import_module(f"markproof.report.{module}")
+        renderer.render_pdf(report, path)
+    except Exception as exc:
+        # Both renderers already raise their own well-worded unavailability error —
+        # WeasyPrint's covers the case that actually bites people, where the wheel
+        # is installed but ctypes cannot find Pango or cairo. Their message is
+        # better than anything reconstructed here, so it is passed through and only
+        # framed. Broad on purpose: whatever goes wrong producing an optional
+        # artefact, the caller gets a sentence and exit 2, never a traceback.
+        raise ConfigError(
+            f"could not write the {engine} report: {exc}\n"
+            f'  If the extra is missing: pip install "markproof[{extra}]"'
+        ) from exc
 
 
 def _readable(exc: Exception) -> str:
@@ -221,6 +264,7 @@ def _write_report(
     timestamp: str | None,
     applicability: Applicability,
     probes: tuple[ProbeRecord, ...],
+    report_config: ReportConfig,
 ) -> None:
     """Write report.json and summary.md, signing when a key is configured.
 
@@ -237,7 +281,7 @@ def _write_report(
         probes=probes,
     )
 
-    key_source = os.environ.get("MARKPROOF_SIGNING_KEY", "").strip()
+    key_source = _signing_key(report_config)
     if key_source:
         try:
             report = sign_report(report, load_private_key(key_source))
@@ -251,15 +295,22 @@ def _write_report(
     report_path = report_dir / "report.json"
     summary_path = report_dir / "summary.md"
 
-    report_path.write_text(
-        json.dumps(report.model_dump(mode="json", exclude_none=True), indent=2, sort_keys=True)
-        + "\n",
-        encoding="utf-8",
-    )
-    summary_path.write_text(render_summary(report), encoding="utf-8")
-
-    console.print(f"  report written to [cyan]{report_path}[/cyan]")
-    console.print(f"  summary written to [cyan]{summary_path}[/cyan]")
+    formats = report_config.formats
+    if "json" in formats:
+        report_path.write_text(
+            json.dumps(report.model_dump(mode="json", exclude_none=True), indent=2, sort_keys=True)
+            + "\n",
+            encoding="utf-8",
+        )
+        console.print(f"  report written to [cyan]{report_path}[/cyan]")
+    if "summary" in formats:
+        summary_path.write_text(render_summary(report), encoding="utf-8")
+        console.print(f"  summary written to [cyan]{summary_path}[/cyan]")
+    for fmt in ("pdf", "pdf-html"):
+        if fmt in formats:
+            pdf_path = report_dir / ("report.pdf" if fmt == "pdf" else "report-html.pdf")
+            _render_pdf(report, pdf_path, engine=fmt)
+            console.print(f"  {fmt} written to [cyan]{pdf_path}[/cyan]")
     if not key_source:
         console.print(
             "  [dim]unsigned — set MARKPROOF_SIGNING_KEY to produce verifiable evidence[/dim]"
@@ -369,19 +420,34 @@ def run(
         json_out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         console.print(f"  findings written to [cyan]{json_out}[/cyan]")
 
-    if report_dir is not None:
-        _write_report(
-            report_dir,
-            config.target.name,
-            rulepack,
-            findings,
-            timestamp,
-            config.applicability,
-            tuple(
-                ProbeRecord(id=p.id, kind=p.probe_kind.value, url=p.url)
-                for p in config.target.probes
-            ),
-        )
+    destination = report_dir if report_dir is not None else None
+    if destination is None and set(config.report.formats) - {"json", "summary"}:
+        # An operator who asked for a PDF in the config meant it; falling through
+        # to "no report at all" because they did not also pass --report-dir would
+        # silently discard the request.
+        destination = Path(config.report.output_dir)
+    if destination is not None:
+        # Guarded like the evaluation above, and for the same reason: producing an
+        # optional artefact can fail — a missing extra, an unwritable directory —
+        # and that is "the run could not finish", not "a rule failed". Exit 1 is
+        # reserved for the second.
+        try:
+            _write_report(
+                destination,
+                config.target.name,
+                rulepack,
+                findings,
+                timestamp,
+                config.applicability,
+                tuple(
+                    ProbeRecord(id=p.id, kind=p.probe_kind.value, url=p.url)
+                    for p in config.target.probes
+                ),
+                config.report,
+            )
+        except (ConfigError, OSError) as exc:
+            err_console.print(f"[bold red]error:[/] {exc}")
+            raise typer.Exit(code=2) from exc
 
     raise typer.Exit(code=exit_code_for(findings))
 

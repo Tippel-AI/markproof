@@ -18,6 +18,7 @@ was unprotected is exactly what a pipeline depends on:
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import stat
 from pathlib import Path
@@ -30,6 +31,13 @@ from typer.testing import CliRunner
 from markproof.cli import app
 
 RUNNER = CliRunner()
+
+#: The PDF path needs an optional extra. CI installs it so the path is genuinely
+#: covered; a contributor without it gets a skip rather than a puzzling failure.
+needs_reportlab = pytest.mark.skipif(
+    importlib.util.find_spec("reportlab") is None,
+    reason="needs the [pdf] extra: pip install 'markproof[pdf]'",
+)
 
 _ENDPOINT = "https://api.example.invalid/v1/chat/completions"
 _DISCLOSED = "Hallo! Sie sprechen mit einer KI. Wie kann ich helfen?"
@@ -337,3 +345,98 @@ class TestTimestampPinning:
         )
         report = json.loads((out / "report.json").read_text(encoding="utf-8"))
         assert report["run"]["timestamp"] == stamp
+
+
+class TestPdfOutput:
+    """Issue #21: 354 lines of renderer that no invocation could reach.
+
+    `ReportConfig.formats` was typed to accept only json and summary, the CLI
+    never imported either renderer, and `run --help` said nothing about PDF — while
+    the README advertised `pip install "markproof[pdf]"` as if installing the extra
+    got you one. The PDF is the artefact you hand an auditor, so having it exist
+    only in the source tree was the gap least likely to be noticed and most likely
+    to matter.
+    """
+
+    @needs_reportlab
+    @respx.mock
+    def test_a_pdf_is_written_when_the_config_asks_for_one(self, tmp_path: Path) -> None:
+        respx.post(_ENDPOINT).mock(return_value=_reply(_DISCLOSED))
+        config = _config(tmp_path, extra="report:\n  formats: [json, pdf]\n")
+        out = tmp_path / "out"
+        result = RUNNER.invoke(app, ["run", "-c", str(config), "--report-dir", str(out)])
+        assert result.exit_code == 0, result.output
+        pdf = out / "report.pdf"
+        assert pdf.is_file()
+        assert pdf.read_bytes().startswith(b"%PDF-"), "not a PDF"
+
+    @respx.mock
+    def test_formats_are_honoured_rather_than_validated_and_ignored(self, tmp_path: Path) -> None:
+        """Asking for json alone must not also produce a summary."""
+        respx.post(_ENDPOINT).mock(return_value=_reply(_DISCLOSED))
+        config = _config(tmp_path, extra="report:\n  formats: [json]\n")
+        out = tmp_path / "out"
+        RUNNER.invoke(app, ["run", "-c", str(config), "--report-dir", str(out)])
+        assert (out / "report.json").is_file()
+        assert not (out / "summary.md").exists()
+
+    @needs_reportlab
+    @respx.mock
+    def test_a_pdf_request_alone_is_enough_to_write_a_report(self, tmp_path: Path) -> None:
+        """Without --report-dir, output_dir from the config is used.
+
+        An operator who asked for a PDF meant it; producing nothing because they
+        did not also pass a flag would discard the request silently.
+        """
+        respx.post(_ENDPOINT).mock(return_value=_reply(_DISCLOSED))
+        config = _config(
+            tmp_path, extra=f"report:\n  formats: [pdf]\n  output_dir: {tmp_path / 'declared'}\n"
+        )
+        RUNNER.invoke(app, ["run", "-c", str(config)])
+        assert (tmp_path / "declared" / "report.pdf").is_file()
+
+    @respx.mock
+    def test_a_missing_extra_is_a_sentence_with_the_install_command(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """pdf-html needs Pango and cairo, which pip cannot install for you."""
+        from markproof.report import pdf_weasy
+
+        def _unavailable(*_: object, **__: object) -> None:
+            raise pdf_weasy.WeasyPrintUnavailableError(
+                "WeasyPrint is not installed. pip install 'markproof[pdf-html]' — "
+                "it also needs Pango and cairo, which pip does not install."
+            )
+
+        monkeypatch.setattr(pdf_weasy, "render_pdf", _unavailable)
+        respx.post(_ENDPOINT).mock(return_value=_reply(_DISCLOSED))
+        config = _config(tmp_path, extra="report:\n  formats: [pdf-html]\n")
+        result = RUNNER.invoke(
+            app, ["run", "-c", str(config), "--report-dir", str(tmp_path / "out")]
+        )
+        assert result.exit_code == 2, result.output
+        assert "Traceback" not in result.output
+        assert "pdf-html" in result.output
+
+
+class TestSignKeyFromConfig:
+    @respx.mock
+    def test_the_config_can_name_the_environment_variable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`sign_key` was validated and then ignored, so a report went out unsigned."""
+        respx.post(_ENDPOINT).mock(return_value=_reply(_DISCLOSED))
+        keys = tmp_path / "keys"
+        keys.mkdir()
+        RUNNER.invoke(app, ["keygen", "--out-dir", str(keys)])
+        monkeypatch.setenv(
+            "CI_SIGNING_KEY", (keys / "markproof-signing-key.pem").read_text(encoding="utf-8")
+        )
+        monkeypatch.delenv("MARKPROOF_SIGNING_KEY", raising=False)
+
+        config = _config(tmp_path, extra="report:\n  sign_key: env:CI_SIGNING_KEY\n")
+        out = tmp_path / "out"
+        result = RUNNER.invoke(app, ["run", "-c", str(config), "--report-dir", str(out)])
+        assert result.exit_code == 0, result.output
+        report = json.loads((out / "report.json").read_text(encoding="utf-8"))
+        assert "signature" in report, "the configured key was ignored"

@@ -157,9 +157,16 @@ markproof verify-report report.json --key public.pem
     MARKPROOF_SIGNING_KEY: ${{ secrets.MARKPROOF_SIGNING_KEY }}
 ```
 
-The output is signed JSON plus a job summary — no system dependencies, so this path
-works on any runner. (A PDF renderer exists in the source but is not yet wired to the
-CLI: [#21](https://github.com/Tippel-AI/markproof/issues/21).)
+The default output is signed JSON plus a job summary — no system dependencies, so
+that path works on any runner. A PDF for the auditor is opt-in through the config:
+
+```yaml
+report:
+  formats: [json, summary, pdf]     # needs: pipx install "markproof[pdf]"
+```
+
+`pdf` is pure Python. `pdf-html` renders through WeasyPrint and wants Pango and
+cairo, which pip does not install — so it is never on the default path.
 
 ## Related projects
 
