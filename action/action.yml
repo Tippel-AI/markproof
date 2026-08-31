@@ -1,0 +1,335 @@
+# SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
+# SPDX-License-Identifier: Apache-2.0
+#
+# Composite, not Docker: a Docker action pays an image build or pull on every
+# run, and this action's whole job is to add a few seconds to a pipeline, not a
+# few minutes. Everything it does is a shell step around the CLI.
+#
+# Pinned action versions, verified against the upstream tag lists on 2026-08-31:
+#   actions/setup-python    latest v7.0.0  — major tag v7 exists
+#   actions/upload-artifact latest v7.0.1  — major tag v7 exists
+# astral-sh/setup-uv is deliberately NOT used here (see the "Install" step) and
+# has no v10 major tag anyway — only exact versions such as v10.0.1.
+#
+# No step interpolates an input into a `run:` body. Inputs reach the scripts as
+# environment variables only, so a config path containing shell metacharacters
+# is a bad path and not a command. For a tool that exists to make CI evidence
+# trustworthy, that is table stakes.
+
+name: markproof — Article 50 conformance check
+description: >-
+  Probe a live GenAI endpoint for the EU AI Act Article 50 transparency
+  obligations, write a signed report, and fail the build when a rule fails.
+author: Tippel — Lukas Friedrich
+
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  config:
+    description: Path to markproof.yaml, relative to the workspace.
+    required: false
+    default: markproof.yaml
+  rulepack:
+    description: >-
+      Rulepack id (e.g. art50-eu-2026.07) or path to a rulepack file. Overrides
+      the rulepack named in the config. Empty means "use the config".
+    required: false
+    default: ""
+  report-dir:
+    description: Directory that receives report.json and summary.md.
+    required: false
+    default: markproof-report
+  fail-on:
+    description: >-
+      Lowest result that fails the step. 'fail' (default) goes red on a FAIL
+      finding only; 'warn' also goes red on WARN. SKIP never fails.
+    required: false
+    default: fail
+  python-version:
+    description: >-
+      Python for the isolated markproof environment. Set to an empty string to
+      skip actions/setup-python and use the interpreter already on PATH.
+    required: false
+    default: "3.12"
+  extras:
+    description: >-
+      Comma-separated optional extras to install, e.g. 'synthid' for SynthID
+      text verification or 'pdf' for the pure-Python PDF renderer. Empty
+      installs the default path only, which needs no system packages.
+    required: false
+    default: ""
+  version:
+    description: >-
+      markproof version installed from PyPI. Ignored when the action runs from
+      a checkout of the markproof repository itself, which installs that source.
+    required: false
+    default: 0.1.0
+  upload-artifact:
+    description: Upload report-dir with actions/upload-artifact.
+    required: false
+    default: "true"
+  artifact-name:
+    description: Artifact name. Must be unique within the workflow run.
+    required: false
+    default: markproof-report
+
+outputs:
+  report-path:
+    description: Path to the JSON report.
+    value: ${{ steps.run.outputs.report-path }}
+  summary-path:
+    description: Path to the Markdown summary.
+    value: ${{ steps.run.outputs.summary-path }}
+  exit-code:
+    description: >-
+      Exit code of `markproof run` itself — 0 clean, 1 at least one FAIL,
+      2 configuration or probe error. Set even when the step goes red, so a
+      later step with `if: always()` can read it.
+    value: ${{ steps.run.outputs.exit-code }}
+
+runs:
+  using: composite
+
+  steps:
+    - name: Validate inputs
+      shell: bash
+      env:
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_UPLOAD_ARTIFACT: ${{ inputs.upload-artifact }}
+        INPUT_CONFIG: ${{ inputs.config }}
+      run: |
+        set -euo pipefail
+
+        case "$INPUT_FAIL_ON" in
+          fail|warn) ;;
+          *)
+            echo "::error title=markproof::fail-on must be 'fail' or 'warn', got '${INPUT_FAIL_ON}'"
+            exit 1
+            ;;
+        esac
+
+        case "$INPUT_UPLOAD_ARTIFACT" in
+          true|false) ;;
+          *)
+            echo "::error title=markproof::upload-artifact must be 'true' or 'false', got '${INPUT_UPLOAD_ARTIFACT}'"
+            exit 1
+            ;;
+        esac
+
+        # Fail here rather than three steps later with a stack trace: a missing
+        # config is the single most common way this action is misconfigured.
+        if [ ! -f "$INPUT_CONFIG" ]; then
+          echo "::error title=markproof::config not found: ${INPUT_CONFIG} (paths are relative to the workspace — did you run actions/checkout?)"
+          exit 1
+        fi
+
+    - name: Set up Python
+      if: inputs.python-version != ''
+      uses: actions/setup-python@v7
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install markproof
+      id: install
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_EXTRAS: ${{ inputs.extras }}
+      run: |
+        set -euo pipefail
+
+        venv="${RUNNER_TEMP}/markproof-venv"
+
+        # Which interpreter seeds the environment. After actions/setup-python
+        # this is the requested version; without it, whatever the image ships.
+        py="$(command -v python || command -v python3)"
+
+        # Source checkout vs PyPI.
+        #
+        # A local reference (`uses: ./action`) puts GITHUB_ACTION_PATH inside
+        # the workspace, so its parent is the checked-out repository. A remote
+        # reference lands under .../work/_actions/... instead — GitHub checks
+        # the whole repository out there too, which is why the path test comes
+        # first and the pyproject test only confirms it.
+        action_parent="$(cd "${GITHUB_ACTION_PATH}/.." && pwd -P)"
+        workspace="$(cd "${GITHUB_WORKSPACE}" && pwd -P)"
+
+        extras_suffix=""
+        if [ -n "$INPUT_EXTRAS" ]; then
+          extras_suffix="[${INPUT_EXTRAS}]"
+        fi
+
+        if [ "$action_parent" = "$workspace" ] \
+           && [ -f "${action_parent}/pyproject.toml" ] \
+           && grep -qE '^name = "markproof"' "${action_parent}/pyproject.toml"; then
+          spec="${action_parent}${extras_suffix}"
+          origin="source checkout at ${action_parent}"
+        else
+          spec="markproof${extras_suffix}==${INPUT_VERSION}"
+          origin="PyPI"
+        fi
+
+        # uv when the runner already has it, pip otherwise. The action does not
+        # install uv on the caller's behalf: adding a toolchain nobody asked for
+        # to make our own step faster is not our call to make. Callers who want
+        # the speedup run astral-sh/setup-uv first, and the choice is logged
+        # below so it is never a mystery. MARKPROOF_INSTALLER forces either one.
+        installer="${MARKPROOF_INSTALLER:-auto}"
+        if [ "$installer" = "auto" ]; then
+          if command -v uv >/dev/null 2>&1; then installer="uv"; else installer="pip"; fi
+        fi
+
+        echo "::group::Install markproof (${installer}, from ${origin})"
+        case "$installer" in
+          uv)
+            # CPU torch unless the caller said otherwise. The synthid extra
+            # pulls torch, and on Linux the default PyPI wheel is the CUDA
+            # build — over 2 GB installed, on a runner with no GPU.
+            export UV_TORCH_BACKEND="${UV_TORCH_BACKEND:-cpu}"
+            uv venv --python "$py" "$venv"
+            venv_bin="${venv}/bin"
+            [ -d "$venv_bin" ] || venv_bin="${venv}/Scripts"
+            uv pip install --python "${venv_bin}/python" "$spec"
+            ;;
+          pip)
+            "$py" -m venv "$venv"
+            venv_bin="${venv}/bin"
+            [ -d "$venv_bin" ] || venv_bin="${venv}/Scripts"
+            "${venv_bin}/python" -m pip install --disable-pip-version-check --quiet --upgrade pip
+            "${venv_bin}/python" -m pip install --disable-pip-version-check "$spec"
+            ;;
+          *)
+            echo "::error title=markproof::MARKPROOF_INSTALLER must be 'auto', 'uv' or 'pip', got '${installer}'"
+            exit 1
+            ;;
+        esac
+        echo "::endgroup::"
+
+        # Its own virtualenv, never the caller's interpreter: a compliance
+        # checker that injects httpx, pydantic and possibly torch into the
+        # application environment it is checking can mask the very dependency
+        # problem the pipeline exists to catch.
+        #
+        # Exported for the rest of the job, not just for the steps below — a
+        # follow-up step verifying the signature needs the same binary.
+        {
+          echo "MARKPROOF_BIN=${venv_bin}/markproof"
+          echo "MARKPROOF_PYTHON=${venv_bin}/python"
+        } >> "$GITHUB_ENV"
+
+        "${venv_bin}/markproof" --version
+
+    - name: Run markproof
+      id: run
+      shell: bash
+      env:
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_RULEPACK: ${{ inputs.rulepack }}
+        INPUT_REPORT_DIR: ${{ inputs.report-dir }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        set -uo pipefail
+
+        mkdir -p "$INPUT_REPORT_DIR"
+
+        args=(run --config "$INPUT_CONFIG" --report-dir "$INPUT_REPORT_DIR")
+        if [ -n "$INPUT_RULEPACK" ]; then
+          args+=(--rulepack "$INPUT_RULEPACK")
+        fi
+
+        echo "::group::markproof run"
+        code=0
+        "$MARKPROOF_BIN" "${args[@]}" || code=$?
+        echo "::endgroup::"
+
+        report="${INPUT_REPORT_DIR}/report.json"
+
+        # Effective verdict, kept separate from markproof's own exit code.
+        # Exit 2 is a configuration or probe error, not a finding: it fails the
+        # step whatever fail-on says, because nothing was actually checked.
+        effective="$code"
+        if [ "$code" -lt 2 ] && [ "$INPUT_FAIL_ON" = "warn" ]; then
+          counts="$("$MARKPROOF_PYTHON" -c 'import json,sys;s=json.load(open(sys.argv[1]))["summary"];print(s["failed"],s["warned"])' "$report" 2>/dev/null || true)"
+          if [ -z "$counts" ]; then
+            echo "::warning title=markproof::fail-on=warn could not read ${report}; falling back to the plain exit code"
+          else
+            warned="${counts##* }"
+            if [ "$warned" -gt 0 ] && [ "$effective" -eq 0 ]; then
+              echo "::notice title=markproof::${warned} WARN finding(s) and fail-on=warn — failing the step"
+              effective=1
+            fi
+          fi
+        fi
+
+        {
+          echo "exit-code=${code}"
+          echo "effective-exit-code=${effective}"
+          echo "report-path=${report}"
+          echo "summary-path=${INPUT_REPORT_DIR}/summary.md"
+        } >> "$GITHUB_OUTPUT"
+
+    # From here on: `!cancelled()` rather than `success()`. A red check whose
+    # evidence never reaches the job summary or the artifact store is worth
+    # nothing — the report is the point, and a FAIL is exactly when someone
+    # needs to read it.
+    - name: Write job summary
+      if: ${{ !cancelled() && steps.run.outputs.exit-code != '' }}
+      shell: bash
+      env:
+        SUMMARY_PATH: ${{ steps.run.outputs.summary-path }}
+        REPORT_PATH: ${{ steps.run.outputs.report-path }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "${GITHUB_STEP_SUMMARY:-}" ]; then
+          echo "::notice title=markproof::GITHUB_STEP_SUMMARY is unset — skipping the job summary"
+          exit 0
+        fi
+
+        if [ -f "$SUMMARY_PATH" ]; then
+          # GitHub caps a step summary at 1 MiB and drops the whole thing when
+          # it is exceeded. Truncating loudly beats losing the summary.
+          limit=$((900 * 1024))
+          size="$(wc -c < "$SUMMARY_PATH" | tr -d ' ')"
+          if [ "$size" -gt "$limit" ]; then
+            head -c "$limit" "$SUMMARY_PATH" >> "$GITHUB_STEP_SUMMARY"
+            printf '\n\n> Summary truncated at %s bytes. The full report is in the workflow artifact.\n' "$limit" \
+              >> "$GITHUB_STEP_SUMMARY"
+          else
+            cat "$SUMMARY_PATH" >> "$GITHUB_STEP_SUMMARY"
+          fi
+        else
+          echo "::warning title=markproof::no summary at ${SUMMARY_PATH} — is 'summary' in report.formats?"
+          {
+            echo "### markproof"
+            echo
+            echo "No Markdown summary was produced. The JSON report is at \`${REPORT_PATH}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Upload report
+      if: ${{ !cancelled() && steps.run.outputs.exit-code != '' && inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.report-dir }}
+        if-no-files-found: warn
+
+    - name: Apply verdict
+      if: ${{ !cancelled() && steps.run.outputs.exit-code != '' }}
+      shell: bash
+      env:
+        RAW_EXIT: ${{ steps.run.outputs.exit-code }}
+        EFFECTIVE_EXIT: ${{ steps.run.outputs.effective-exit-code }}
+      run: |
+        set -uo pipefail
+
+        if [ "$RAW_EXIT" -ge 2 ]; then
+          echo "::error title=markproof::markproof exited ${RAW_EXIT} — configuration or probe error, nothing was checked"
+        elif [ "$EFFECTIVE_EXIT" -ne 0 ]; then
+          echo "::error title=markproof::Article 50 check failed — see the job summary and the report artifact"
+        fi
+
+        exit "$EFFECTIVE_EXIT"
