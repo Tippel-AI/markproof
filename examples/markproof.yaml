@@ -50,3 +50,8 @@ text_marking:
 rulepack: art50-eu-2026.07
 report:
   sign_key: env:MARKPROOF_SIGNING_KEY  # Ed25519 private key, PEM
+  # json + summary need nothing beyond the base install, which is why they are the
+  # default: the path a CI runner takes must not depend on a system library.
+  # Add `pdf` for the artefact you hand an auditor — extra [pdf], pure Python.
+  # `pdf-html` renders through WeasyPrint and also wants Pango and cairo.
+  formats: [json, summary]

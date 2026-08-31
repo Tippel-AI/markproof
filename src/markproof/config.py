@@ -314,8 +314,23 @@ class ReportConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     sign_key: str | None = None
-    formats: tuple[Literal["json", "summary"], ...] = ("json", "summary")
+    """Where the Ed25519 signing key comes from: ``env:NAME`` for an environment
+    variable, or a path. ``MARKPROOF_SIGNING_KEY`` is used when this is unset, so
+    CI needs no config change."""
+
+    formats: tuple[Literal["json", "summary", "pdf", "pdf-html"], ...] = ("json", "summary")
+    """Which artefacts to write.
+
+    ``json`` and ``summary`` need nothing beyond the base install and are the
+    default for that reason — the output path a CI runner takes must never depend
+    on a system library. ``pdf`` needs the ``[pdf]`` extra (pure Python) and
+    ``pdf-html`` the ``[pdf-html]`` one, which wants Pango and cairo and is not
+    pip-installable. Ask for one you have not installed and the run stops with the
+    install command rather than a traceback.
+    """
+
     output_dir: str = "markproof-report"
+    """Where those artefacts go, unless ``--report-dir`` overrides it."""
 
 
 class TextMarkingConfig(BaseModel):
