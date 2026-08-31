@@ -252,7 +252,10 @@ def run(
         pattern_sets = _load_pattern_sets(rulepack)
         watermark = _load_watermark(config, config_path)
         evidences = _collect(config)
-    except (ConfigError, ProbeError) as exc:
+    except (ConfigError, ProbeError, SigningError, ValueError) as exc:
+        # ValueError covers the watermark config loader, which validates a
+        # user-supplied path — a wrong path is a configuration mistake and
+        # deserves a sentence, not a traceback.
         err_console.print(f"[bold red]error:[/] {exc}")
         raise typer.Exit(code=2) from exc
 

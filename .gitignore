@@ -59,3 +59,8 @@ secrets/
 *.pem
 *.key
 watermark_config.json
+# ...except the demo bot's, which is test material, not a secret: throwaway keys
+# for a bot that serves fixed strings. Without it the demo and the dogfood
+# workflow cannot run, and a rule that silently breaks the example it ships with
+# protects nothing.
+!examples/demo-bot/watermark_config.json
