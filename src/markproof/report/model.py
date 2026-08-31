@@ -28,7 +28,7 @@ from markproof import __version__
 from markproof.rules.engine import Finding, Result
 from markproof.rules.schema import Applicability, Rulepack
 
-__all__ = ["Report", "RunMetadata", "Signature", "Summary", "build_report"]
+__all__ = ["ProbeRecord", "Report", "RunMetadata", "Signature", "Summary", "build_report"]
 
 #: Report schema version. Bumped when the shape changes in a way that would
 #: break a verifier written against the previous one.
@@ -51,6 +51,26 @@ class RunMetadata(BaseModel):
     markproof_version: str
     python_version: str
     platform: str
+
+
+class ProbeRecord(BaseModel):
+    """One endpoint the run actually addressed.
+
+    A report that names findings but not the system they came from is evidence
+    about nothing in particular: two deployments of the same product produce the
+    same document, and a reader cannot tell which one was measured. The URL is the
+    identity of what was tested, so it belongs under the signature.
+
+    Recorded from the configuration rather than from the evidence, so a probe that
+    failed to connect still appears — "we tried this endpoint and could not reach
+    it" is the finding that most needs its subject named.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str
+    kind: str
+    url: str
 
 
 class Summary(BaseModel):
@@ -106,6 +126,15 @@ class Report(BaseModel):
     target: str
     rulepack: dict[str, str]
 
+    probes: tuple[ProbeRecord, ...] | None = None
+    """The endpoints this verdict is about.
+
+    Absent — not an empty list — when the report was built without a
+    configuration, which is how the golden cases are produced. An empty list would
+    read as "we checked nothing", which is a different statement from "this
+    report was not produced from a target config".
+    """
+
     applicability: dict[str, bool] | None = None
     """The target's declaration of which Article 50 obligations bind it.
 
@@ -156,6 +185,7 @@ def build_report(
     timestamp: str | None = None,
     applicability: Applicability | None = None,
     run: RunMetadata | None = None,
+    probes: tuple[ProbeRecord, ...] | None = None,
 ) -> Report:
     """Assemble a report from a completed run.
 
@@ -183,11 +213,16 @@ def build_report(
     )
     return Report(
         target=target,
+        probes=probes,
         applicability=declared,
         rulepack={
             "id": rulepack.rulepack,
             "version": rulepack.version,
             "license": rulepack.license,
+            # The digest of the file the rules were read from. Without it the
+            # header is reproducible by anyone holding a differently-worded pack
+            # under the same filename.
+            **({"sha256": rulepack.source_sha256} if rulepack.source_sha256 else {}),
             # The findings quote title, article and guideline_ref verbatim from
             # CC-BY material, so the credit line has to travel with them. A
             # report that carries the text but not the attribution does not

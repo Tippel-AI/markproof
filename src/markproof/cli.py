@@ -42,7 +42,7 @@ from markproof.probes.base import Evidence, ProbeError
 from markproof.probes.http_chat import HttpChatProbe
 from markproof.probes.media import MediaProbe
 from markproof.probes.ui import UiProbe
-from markproof.report.model import build_report
+from markproof.report.model import ProbeRecord, build_report
 from markproof.report.sign import (
     SigningError,
     generate_keypair,
@@ -200,6 +200,7 @@ def _write_report(
     findings: list[Finding],
     timestamp: str | None,
     applicability: Applicability,
+    probes: tuple[ProbeRecord, ...],
 ) -> None:
     """Write report.json and summary.md, signing when a key is configured.
 
@@ -213,6 +214,7 @@ def _write_report(
         findings=findings,
         timestamp=timestamp,
         applicability=applicability,
+        probes=probes,
     )
 
     key_source = os.environ.get("MARKPROOF_SIGNING_KEY", "").strip()
@@ -339,7 +341,16 @@ def run(
 
     if report_dir is not None:
         _write_report(
-            report_dir, config.target.name, rulepack, findings, timestamp, config.applicability
+            report_dir,
+            config.target.name,
+            rulepack,
+            findings,
+            timestamp,
+            config.applicability,
+            tuple(
+                ProbeRecord(id=p.id, kind=p.probe_kind.value, url=p.url)
+                for p in config.target.probes
+            ),
         )
 
     raise typer.Exit(code=exit_code_for(findings))
