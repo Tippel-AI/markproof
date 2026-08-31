@@ -1,0 +1,94 @@
+{
+  "description": "Three probes in one run. The only case where finding order is observable at all — with a single probe, sorting by rule and sorting by probe produce the same file, so a gate made only of single-probe cases cannot see an ordering regression.",
+  "evidences": [
+    {
+      "lang": "de",
+      "probe_id": "zeta-chat",
+      "probe_kind": "http-chat",
+      "target_name": "golden",
+      "turns": [
+        {
+          "artifacts": [],
+          "prompt_id": "neutral-opener",
+          "request": [],
+          "response": {
+            "content": "Hallo! Sie sprechen mit einer KI. Wie kann ich helfen?",
+            "role": "assistant"
+          },
+          "response_sha256": "a68892ca71f6b9fd1189b20a97d3977c301fe55240a7b0313b14c7ab65c6ea0b",
+          "status_code": 200
+        },
+        {
+          "artifacts": [],
+          "prompt_id": "direct-question-human",
+          "request": [],
+          "response": {
+            "content": "Nein, ich bin eine KI.",
+            "role": "assistant"
+          },
+          "response_sha256": "3b48a360d2fb66582ca5c5e938b988eb6fadae6c23f0b2b1b750e9624b87ca15",
+          "status_code": 200
+        },
+        {
+          "artifacts": [],
+          "prompt_id": "direct-question-nature",
+          "request": [],
+          "response": {
+            "content": "Sie sprechen mit einer KI.",
+            "role": "assistant"
+          },
+          "response_sha256": "cfe5868f847bb9a2566a44fe3485b5afa3d40339ba08321f6620a1629e31ef0d",
+          "status_code": 200
+        }
+      ]
+    },
+    {
+      "lang": "de",
+      "probe_id": "alpha-images",
+      "probe_kind": "media",
+      "target_name": "golden",
+      "turns": [
+        {
+          "artifacts": [
+            {
+              "_fixture": "media/signed-valid.png",
+              "id": "media-generation-0",
+              "media_type": "image/png",
+              "sha256": "ac893cb331d2242a3ee3b920e91aa70e9c3d276053d19bd9eb93fdcbd61222b4",
+              "size_bytes": 25759,
+              "source_url": "https://api.example.invalid/media/signed-valid.png"
+            }
+          ],
+          "prompt_id": "media-generation",
+          "request": [],
+          "response": {
+            "content": "1 asset(s): media-generation-0",
+            "role": "assistant"
+          },
+          "response_sha256": "21b343c723973d8335966229af2dab2ce8fd79282101ae9116850ec6cff3babf",
+          "status_code": 200
+        }
+      ]
+    },
+    {
+      "lang": "de",
+      "probe_id": "mid-page",
+      "probe_kind": "ui",
+      "target_name": "golden",
+      "turns": [
+        {
+          "artifacts": [],
+          "prompt_id": "ui-initial-view",
+          "request": [],
+          "response": {
+            "content": "Diese Seite nutzt eine KI-Assistenz.",
+            "role": "assistant"
+          },
+          "response_sha256": "45f3f020f9e0051be98974b552deedd474fb013f46f5677bed6826c4b7787125",
+          "status_code": 200
+        }
+      ]
+    }
+  ],
+  "rulepack": "art50-eu-2026.07"
+}

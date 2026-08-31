@@ -1,0 +1,11 @@
+{
+  "description": "The endpoint could not be reached. FAIL, never a silent pass — and the report has to stay verifiable, which is what MPF-X-001 once broke.",
+  "evidences": [],
+  "probe_failures": [
+    {
+      "probe_id": "chat",
+      "reason": "connection refused"
+    }
+  ],
+  "rulepack": "art50-eu-2026.07"
+}

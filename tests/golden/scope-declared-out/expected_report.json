@@ -1,0 +1,73 @@
+{
+  "applicability": {
+    "ai-interaction": false,
+    "deepfake-labelling": false
+  },
+  "findings": [
+    {
+      "article": "Art. 50(1), Art. 50(5)",
+      "detail": {
+        "declared_by": "target configuration",
+        "outcome": "not_applicable"
+      },
+      "evidence_sha256": [],
+      "guideline_ref": "Guidelines C(2026) 5054, \u00a73.1.2 paras 37, 40; \u00a77.1 para 142; \u00a77.2 para 143",
+      "message": "not applicable \u2014 the target declares no ai-interaction obligation (Art. 50(1), Art. 50(5))",
+      "obligation": "ai-interaction",
+      "probe_id": "page",
+      "result": "SKIP",
+      "rule_id": "MPF-D-002",
+      "title": "The interface discloses the AI nature before the user has sent anything"
+    },
+    {
+      "article": "Art. 50(4)",
+      "detail": {
+        "declared_by": "target configuration",
+        "outcome": "not_applicable"
+      },
+      "evidence_sha256": [],
+      "guideline_ref": "Guidelines C(2026) 5054, \u00a76.1.2 para 117; \u00a76.1.1 paras 113-116; \u00a76.1.3 paras 119, 123; \u00a77.1 para 142; \u00a77.2 para 143; Code of Practice, Section 2, Commitment 1, Measures 1.1 and 1.2",
+      "message": "not applicable \u2014 the target declares no deepfake-labelling obligation (Art. 50(4))",
+      "obligation": "deepfake-labelling",
+      "probe_id": "page",
+      "result": "SKIP",
+      "rule_id": "MPF-L-001",
+      "title": "Delivered content carries a perceivable label disclosing its artificial origin"
+    },
+    {
+      "article": "Art. 50(2)",
+      "detail": {
+        "declared_applicable": "not declared",
+        "outcome": "unverified"
+      },
+      "evidence_sha256": [],
+      "guideline_ref": "Guidelines C(2026) 5054, \u00a74; Code of Practice, Section 1, Commitment 1",
+      "message": "no watermark configuration was supplied. Set text_marking.watermark_config in markproof.yaml to verify text marking.",
+      "obligation": "synthetic-text-marking",
+      "probe_id": "page",
+      "result": "SKIP",
+      "rule_id": "MPF-T-001",
+      "title": "Generated text carries the operator's declared watermark"
+    }
+  ],
+  "rulepack": {
+    "attribution": "Derived from: European Commission, \"Guidelines on the implementation of the transparency obligations for certain AI systems under Article 50 of Regulation (EU) 2024/1689 (the AI Act)\", C(2026) 5054 final, ANNEX, 20.07.2026, and the \"Code of Practice on Transparency of AI-generated Content\", 10.06.2026 \u2014 both published by the European Commission under CC BY 4.0 (Commission Decision 2011/833/EU). Rules are paraphrased and cite the paragraph numbers of the source; refer to the cited paragraphs for the authoritative text. Neither the European Commission nor the AI Board endorses this rulepack or the reading of their material expressed in it.",
+    "id": "art50-eu-2026.07",
+    "license": "CC-BY-4.0",
+    "version": "1.0.0"
+  },
+  "run": {
+    "markproof_version": "0.0.0-golden",
+    "platform": "golden",
+    "python_version": "0.0.0",
+    "timestamp": "2026-08-31T12:00:00+00:00"
+  },
+  "schema_version": 1,
+  "summary": {
+    "failed": 0,
+    "passed": 0,
+    "skipped": 3,
+    "warned": 0
+  },
+  "target": "golden"
+}

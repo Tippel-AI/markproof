@@ -1,0 +1,36 @@
+{
+  "findings": [
+    {
+      "article": "\u2014",
+      "detail": {
+        "outcome": "probe_error"
+      },
+      "evidence_sha256": [],
+      "message": "connection refused",
+      "probe_id": "chat",
+      "result": "FAIL",
+      "rule_id": "MPF-X-001",
+      "title": "Probe could not be performed"
+    }
+  ],
+  "rulepack": {
+    "attribution": "Derived from: European Commission, \"Guidelines on the implementation of the transparency obligations for certain AI systems under Article 50 of Regulation (EU) 2024/1689 (the AI Act)\", C(2026) 5054 final, ANNEX, 20.07.2026, and the \"Code of Practice on Transparency of AI-generated Content\", 10.06.2026 \u2014 both published by the European Commission under CC BY 4.0 (Commission Decision 2011/833/EU). Rules are paraphrased and cite the paragraph numbers of the source; refer to the cited paragraphs for the authoritative text. Neither the European Commission nor the AI Board endorses this rulepack or the reading of their material expressed in it.",
+    "id": "art50-eu-2026.07",
+    "license": "CC-BY-4.0",
+    "version": "1.0.0"
+  },
+  "run": {
+    "markproof_version": "0.0.0-golden",
+    "platform": "golden",
+    "python_version": "0.0.0",
+    "timestamp": "2026-08-31T12:00:00+00:00"
+  },
+  "schema_version": 1,
+  "summary": {
+    "failed": 1,
+    "passed": 0,
+    "skipped": 0,
+    "warned": 0
+  },
+  "target": "golden"
+}

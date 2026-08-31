@@ -81,13 +81,23 @@ jobs:
       - uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
-      # Placeholder. The real gate runs every golden evidence file through the
-      # full pipeline twice (evaluator + report builder, signature and timestamp
-      # zeroed) and asserts byte equality of the canonical JSON — see
-      # DEVELOPMENT_PLAN.md §7. Nothing to run until M1 lands the evaluator.
-      # TODO(M1): replace with `uv run --extra dev pytest -m determinism`.
-      - name: TODO(M1) — determinism gate not implemented yet
+      # Every golden evidence file goes through the full pipeline twice and the
+      # canonical JSON has to be byte-identical, then still match the reviewed
+      # report on disk. A diff in a golden is a change in what the tool calls
+      # conformant; it is reviewed, never refreshed away.
+      #
+      # This job was a placeholder that ran three echo statements and went green
+      # for the whole of M1-M6. A green check verifying nothing is the exact
+      # failure this project exists to catch elsewhere, so if it ever has nothing
+      # to run again, it fails instead of passing quietly.
+      - name: determinism gate
+        run: uv run --extra dev pytest -m determinism
+
+      - name: the gate is not empty
         run: |
-          echo "::notice title=determinism::Placeholder job — implement with M1 (rule evaluator)."
-          echo "Planned: run each tests/golden/<case> through evaluate() + report build twice"
-          echo "with signature and timestamp zeroed, then assert byte-identical JSON."
+          cases=$(find tests/golden -mindepth 1 -maxdepth 1 -type d | wc -l)
+          echo "golden cases: $cases"
+          if [ "$cases" -lt 5 ]; then
+            echo "::error title=determinism::only $cases golden cases — the gate is not covering the pipeline"
+            exit 1
+          fi

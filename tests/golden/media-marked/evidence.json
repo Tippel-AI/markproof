@@ -1,0 +1,34 @@
+{
+  "description": "Delivered media carrying a valid manifest with an AI source type.",
+  "evidences": [
+    {
+      "lang": "de",
+      "probe_id": "images",
+      "probe_kind": "media",
+      "target_name": "golden",
+      "turns": [
+        {
+          "artifacts": [
+            {
+              "_fixture": "media/signed-valid.png",
+              "id": "media-generation-0",
+              "media_type": "image/png",
+              "sha256": "ac893cb331d2242a3ee3b920e91aa70e9c3d276053d19bd9eb93fdcbd61222b4",
+              "size_bytes": 25759,
+              "source_url": "https://api.example.invalid/media/signed-valid.png"
+            }
+          ],
+          "prompt_id": "media-generation",
+          "request": [],
+          "response": {
+            "content": "1 asset(s): media-generation-0",
+            "role": "assistant"
+          },
+          "response_sha256": "21b343c723973d8335966229af2dab2ce8fd79282101ae9116850ec6cff3babf",
+          "status_code": 200
+        }
+      ]
+    }
+  ],
+  "rulepack": "art50-eu-2026.07"
+}
