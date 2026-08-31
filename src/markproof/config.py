@@ -31,6 +31,7 @@ __all__ = [
     "ProbeConfig",
     "ReportConfig",
     "TargetConfig",
+    "TextMarkingConfig",
     "load_config",
 ]
 
@@ -190,6 +191,30 @@ class ReportConfig(BaseModel):
     output_dir: str = "markproof-report"
 
 
+class TextMarkingConfig(BaseModel):
+    """Where to find the operator's watermark configuration.
+
+    Kept out of the rulepack on purpose: a rulepack is public and citable, while
+    these keys are a production secret — whoever holds them can verify *and*
+    forge the mark.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    method: Literal["synthid", "none-declared"] = "synthid"
+    watermark_config: str | None = None
+    """Path to the JSON config. Required for ``method: synthid``."""
+
+    @model_validator(mode="after")
+    def _synthid_needs_config(self) -> TextMarkingConfig:
+        if self.method == "synthid" and not self.watermark_config:
+            raise ValueError(
+                "text_marking.method 'synthid' requires 'watermark_config' — "
+                "without the generation-side parameters no verdict is possible"
+            )
+        return self
+
+
 class MarkproofConfig(BaseModel):
     """A complete ``markproof.yaml``."""
 
@@ -198,6 +223,7 @@ class MarkproofConfig(BaseModel):
     version: Literal[1]
     target: TargetConfig
     rulepack: str = Field(min_length=1)
+    text_marking: TextMarkingConfig | None = None
     report: ReportConfig = Field(default_factory=ReportConfig)
 
 

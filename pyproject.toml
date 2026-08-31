@@ -202,8 +202,14 @@ module = [
     "weasyprint.*",
     "transformers.*",
     "torch.*",
+    "numpy.*",
 ]
 ignore_missing_imports = true
+
+# Note for contributors: with the synthid extra installed, numpy comes along and
+# its bundled stubs use `type` statements that only parse on 3.12+. Since
+# type-checking targets 3.11, run `mypy --python-version 3.13` locally in that
+# case. CI installs only the dev extra, so it never sees numpy.
 
 # ---------------------------------------------------------------------------
 # Tests

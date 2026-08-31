@@ -31,6 +31,8 @@ __all__ = [
     "Rulepack",
     "Severity",
     "Source",
+    "SynthIdDetectCheck",
+    "SynthIdThresholds",
     "TrustConfig",
     "load_rulepack",
 ]
@@ -164,8 +166,63 @@ class C2paVerifyCheck(BaseModel):
     """
 
 
-#: Discriminated union — M3 adds ``synthid-detect`` here.
-Check = Annotated[DisclosurePatternCheck | C2paVerifyCheck, Field(discriminator="type")]
+class SynthIdThresholds(BaseModel):
+    """Where the mean-g score stops being evidence and starts being noise.
+
+    Calibrated against measurement, not taste: an unwatermarked token sequence
+    scores about 0.50 (chance), and the expected value for a watermarked one is
+    about 0.75. The band between the two bounds is the honest middle, and a rule
+    that wants a verdict there is asking the tool to guess.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    watermarked_at: float = Field(default=0.65, ge=0.0, le=1.0)
+    not_watermarked_below: float = Field(default=0.55, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> SynthIdThresholds:
+        if self.not_watermarked_below >= self.watermarked_at:
+            raise ValueError(
+                "not_watermarked_below must be lower than watermarked_at — "
+                "otherwise there is no band left for an uncertain result, and "
+                "every borderline text gets a confident verdict it has not earned"
+            )
+        return self
+
+
+class SynthIdDetectCheck(BaseModel):
+    """Verify that text output carries the operator's own SynthID watermark.
+
+    This is a self-conformance test, not detection in the wild: it needs the
+    watermark configuration the operator generates with. That is a feature, not
+    a limitation — a universal detector would be guessing, and a compliance
+    verdict must not rest on a guess.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["synthid-detect"]
+    detector: Literal["mean-g", "bayesian"] = "mean-g"
+    """``mean-g`` needs only the watermark config; ``bayesian`` needs a trained
+    detector model the operator must supply."""
+
+    min_tokens: int = Field(default=200, ge=1)
+    """Below this, the score is noise. Short answers are skipped, never guessed
+    at — the detector's confidence grows with sequence length."""
+
+    thresholds: SynthIdThresholds = Field(default_factory=SynthIdThresholds)
+    on_uncertain: Severity | Literal["skip"] = Severity.FAIL
+    """What an inconclusive score means for the verdict. Failing by default is
+    the conservative reading: an operator claiming to watermark should produce
+    text that clears the bar."""
+
+
+#: Discriminated union across every check type this build implements.
+Check = Annotated[
+    DisclosurePatternCheck | C2paVerifyCheck | SynthIdDetectCheck,
+    Field(discriminator="type"),
+]
 
 
 class Rule(BaseModel):
