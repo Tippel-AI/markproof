@@ -566,7 +566,13 @@ def _finding_from_labels(rule: Rule, evidence: Evidence, outcome: LabelResult) -
             guideline_ref=rule.guideline_ref,
             probe_id=evidence.probe_id,
             result=Result.SKIP,
-            message="no perceivable text to inspect for a label",
+            message=(
+                "no perceivable text to inspect for a label — a media endpoint "
+                "returns an API payload, not the page where the content is shown. "
+                "Point a 'ui' probe at that page to check this obligation."
+                if evidence.probe_kind is ProbeKind.MEDIA
+                else "no perceivable text to inspect for a label"
+            ),
             detail=detail,
             evidence_sha256=hashes,
         )

@@ -576,6 +576,25 @@ Aussage „diese Website nutzt KI" statt einer Angabe zu *diesem* Inhalt (Rn. 14
 sowie das Bildnachweis-Vokabular „Symbolbild" / *stock photo*, das vor
 wörtlicher Lesart warnt und über KI nichts sagt.
 
+**Nachtrag vom 31.08.2026 — wo `MPF-L-001` überhaupt hinsehen kann.** Die Regel
+galt für `media`- und `ui`-Proben, prüfte bei einer Medien-Probe aber eine
+Zeichenkette, die markproof selbst geschrieben hatte: Die Sonde legt
+`"3 asset(s): images-0, images-1, images-2"` als Antworttext ab, damit ein Befund
+benennen kann, was er betrachtet hat. Diese Zusammenfassung ist nicht leer, also
+griff der Zweig „nichts zu lesen" nie, und sie kann kein Label enthalten — das
+Ergebnis stand vor der Prüfung fest: **jede** Medien-Probe warnte.
+
+Eine Warnung, die bei jedem Ziel erscheint, trägt keine Information und erzieht
+ihren Leser dazu, sie zu überspringen — derselbe Fehler wie ein geratenes PASS,
+nur mit umgekehrtem Vorzeichen (§10.1).
+
+Die Pflicht ist echt, sie knüpft nach Rn. 117 aber an die Wahrnehmbarkeit **am
+Ort der Darstellung** an, und ein Bild-Endpunkt ist dieser Ort nicht. Die Regel
+meldet dort deshalb `SKIP` und nennt den nächsten Schritt: eine `ui`-Probe auf die
+Seite richten, auf der das Bild erscheint. Ein Label im JSON-Rumpf einer API zu
+akzeptieren wäre schlimmer als die falsche Warnung — es ließe eine
+Wahrnehmbarkeitspflicht durch Wörter erfüllen, die kein Mensch je sieht.
+
 ### 9.4 Die Ausnahmen
 
 Wie bei Art. 50(1) sind alle Ausnahmen **Kontextfragen**. Keine wird zur Regel;

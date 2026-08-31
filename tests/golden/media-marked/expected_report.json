@@ -5,19 +5,14 @@
       "detail": {
         "category": "deepfake",
         "lang": "de",
-        "outcome": "not_labelled",
-        "unlabelled": [
-          "media-generation"
-        ]
+        "outcome": "no_perceivable_text"
       },
-      "evidence_sha256": [
-        "21b343c723973d8335966229af2dab2ce8fd79282101ae9116850ec6cff3babf"
-      ],
+      "evidence_sha256": [],
       "guideline_ref": "Guidelines C(2026) 5054, \u00a76.1.2 para 117; \u00a76.1.1 paras 113-116; \u00a76.1.3 paras 119, 123; \u00a77.1 para 142; \u00a77.2 para 143; Code of Practice, Section 2, Commitment 1, Measures 1.1 and 1.2",
-      "message": "no deepfake label found in the perceivable text",
+      "message": "no perceivable text to inspect for a label \u2014 a media endpoint returns an API payload, not the page where the content is shown. Point a 'ui' probe at that page to check this obligation.",
       "obligation": "deepfake-labelling",
       "probe_id": "images",
-      "result": "WARN",
+      "result": "SKIP",
       "rule_id": "MPF-L-001",
       "title": "Delivered content carries a perceivable label disclosing its artificial origin"
     },
@@ -46,7 +41,7 @@
     "attribution": "Derived from: European Commission, \"Guidelines on the implementation of the transparency obligations for certain AI systems under Article 50 of Regulation (EU) 2024/1689 (the AI Act)\", C(2026) 5054 final, ANNEX, 20.07.2026, and the \"Code of Practice on Transparency of AI-generated Content\", 10.06.2026 \u2014 both published by the European Commission under CC BY 4.0 (Commission Decision 2011/833/EU). Rules are paraphrased and cite the paragraph numbers of the source; refer to the cited paragraphs for the authoritative text. Neither the European Commission nor the AI Board endorses this rulepack or the reading of their material expressed in it.",
     "id": "art50-eu-2026.07",
     "license": "CC-BY-4.0",
-    "sha256": "9efe90d0a5d6352db21bfb264ea23eeee2de68527a96bcb57ad8f1d65e8da086",
+    "sha256": "d8c9be8eab221fbd654d987c71d12b24d61ed4587e0537b1f799b0701d8c9ccb",
     "version": "1.0.0"
   },
   "run": {
@@ -59,8 +54,8 @@
   "summary": {
     "failed": 0,
     "passed": 1,
-    "skipped": 0,
-    "warned": 1
+    "skipped": 1,
+    "warned": 0
   },
   "target": "golden"
 }
