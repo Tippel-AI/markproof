@@ -25,10 +25,11 @@ description = "Deterministic CI checks for EU AI Act Article 50: verify that dep
 readme = "README.md"
 requires-python = ">=3.11"
 
-# PEP 639 license expression. Code is Apache-2.0; the shipped rulepacks and
-# patterns (src/markproof/rulepacks, src/markproof/patterns) are CC-BY-4.0
-# because they are derived from CC-BY-4.0 Commission material. Both texts and
-# the attribution notice travel with every wheel/sdist.
+# PEP 639 license expression. Code is Apache-2.0; the shipped rulepacks,
+# patterns and prompt sets (src/markproof/rulepacks, src/markproof/patterns,
+# src/markproof/prompts) are CC-BY-4.0 because they are derived from CC-BY-4.0
+# Commission material. Both texts and the attribution notice travel with every
+# wheel/sdist.
 license = "Apache-2.0 AND CC-BY-4.0"
 license-files = ["LICENSE", "LICENSE-DATA", "NOTICE"]
 
@@ -176,11 +177,17 @@ ignore = [
 [tool.ruff.lint.isort]
 known-first-party = ["markproof"]
 
-# TODO(M0): SPDX-header presence is enforced by a separate pre-commit hook
-# (reuse lint), not by ruff — see .pre-commit-config.yaml once it exists.
+# SPDX-header presence is not a ruff rule. It is enforced by the `spdx-header`
+# hook in .pre-commit-config.yaml, which covers every file type that can hold a
+# comment; the data and media files are covered by the perimeter in NOTICE §1.
 
 [tool.ruff.format]
 docstring-code-format = true
+# Ruff also formats Python blocks inside Markdown. The prose here quotes
+# fragments that are not standalone statements — a dict entry lifted out of a
+# call, for instance — and reformatting them turns a quotation into something
+# the source never said. Docs are written, not generated.
+exclude = ["*.md"]
 
 # ---------------------------------------------------------------------------
 # Types

@@ -75,10 +75,10 @@ KI. Das ist die Begründung für das negative Muster `de-n3-nur-automatisiert`.
 
 Zweitens verlangen die Leitlinien von **KI-Agenten** zweierlei (Rn. 31): Sie
 sollen ihre künstliche Natur offenlegen *und* offenlegen, in wessen Auftrag sie
-handeln. Die zweite Hälfte ist eine eigene, prüfbare Pflicht — sie hat in M1
-noch keine Regel, siehe §6.
+handeln. Die zweite Hälfte ist eine eigene, prüfbare Pflicht — sie hat bis heute
+keine Regel, siehe §6.
 
-Ein HTTP-Chat-Endpoint, wie ihn markproof in M1 anspricht, liegt im Kern des
+Ein HTTP-Chat-Endpoint, wie ihn die `http-chat`-Probe anspricht, liegt im Kern des
 Anwendungsbereichs: Die Beispielliste der Leitlinien führt Chatbots im
 Kundenservice, in der Beschwerdebearbeitung, im E-Commerce, im Finanz-, Gesund-
 heits- und Bildungsbereich ausdrücklich auf.
@@ -125,7 +125,8 @@ greift.
 
 ### 3.3 Bei direkter Nachfrage
 
-> **Fundstelle:** §3.1.2 Rn. 40 · **Regel:** `MPF-D-003` — spezifiziert, in M1 blockiert (§6)
+> **Fundstelle:** §3.1.2 Rn. 40 · **Regel:** `MPF-D-003` — ausgeliefert, an die
+> direkten Fragen gebunden (§6)
 
 Rn. 40 ist die schärfste Aussage des ganzen Abschnitts und in der
 Debatte um „Bist du ein Mensch?" die entscheidende. Sie sagt zweierlei.
@@ -145,9 +146,19 @@ KI-Ursprung getäuscht oder verwirrt werden dürfte.
 
 Die Prompt-Sets bilden diese Situation mit vier Prompts ab
 (`direct-question-human`, `direct-question-nature`, `origin-of-answer`,
-`role-pressure`). Ihre Antworten landen als gehashte Evidenz im Report; eine
-Regel wertet sie in M1 noch nicht aus, weil das Check-Format keine Bindung an
-eine Prompt-ID kennt. Siehe §6.
+`role-pressure`). Zwei davon wertet `MPF-D-003` aus: Das Rulepack bindet die
+Regel mit `prompt_ids: [direct-question-human, direct-question-nature]` an genau
+die Turns, in denen die Frage gestellt wurde
+(`art50-eu-2026.07.yaml:111-113`; ausgewertet in `checks/disclosure.py`,
+`_turns_in_scope()`). Damit prüft die Regel die Antwort auf die Frage und nicht
+erneut den neutralen Opener — der Unterschied zu `MPF-D-001`, der sie überhaupt
+erst rechtfertigt.
+
+Die Antworten auf `origin-of-answer` und `role-pressure` landen weiterhin als
+gehashte Evidenz im Report, ohne dass eine Regel sie bewertet. Das ist Absicht:
+Bei beiden hängt die Bewertung am Gesprächsverlauf, und Rn. 40 verlangt dort
+eine Einschätzung, ob die Person getäuscht oder verwirrt werden dürfte — eine
+Wertung, die ein Musterabgleich nicht trifft.
 
 ### 3.4 Was nicht genügt
 
@@ -234,8 +245,10 @@ Information *spätestens* zur ersten Interaktion, nicht zwingend davor; Rn. 40
 beschreibt den vorgelagerten Hinweis als *in der Regel ausreichende* Praxis,
 nicht als Pflicht. Ein `fail` würde mehr behaupten, als in den Leitlinien steht.
 
-`MPF-D-002` zielt auf die UI-Probe (Playwright, M5) und läuft in M1 noch nicht
-— siehe §6.
+`MPF-D-002` zielt auf die UI-Probe (Playwright). Sie ist seit M5 da
+(`probes/ui.py`), und damit läuft die Regel: Nur eine gerenderte Oberfläche
+kann einen Turn liefern, dem keine Nutzernachricht vorausgeht. Warum sie auf
+`http-chat` nicht sinnvoll läuft, steht in §6.
 
 ---
 
@@ -301,43 +314,43 @@ voll offenlegungspflichtig.
 
 | Regel | Art. | Fundstelle | Probe | Position | Severity | Status |
 |---|---|---|---|---|---|---|
-| `MPF-D-001` | 50(1) | §3.1.2 Rn. 32, 33, 35 · §7.2 Rn. 143 | `http-chat` | `anywhere_in_first_response` | `fail` | **aktiv in M1** |
-| `MPF-D-002` | 50(1), 50(5) | §3.1.2 Rn. 37, 40 · §7.1 Rn. 142 · §7.2 Rn. 143 | `ui` | `before_first_user_message` | `warn` | wartet auf die UI-Probe (M5) |
-| `MPF-D-003` | 50(1) | §3.1.2 Rn. 40 | `http-chat` | — | `fail` | **spezifiziert, blockiert** (§6) |
-| `MPF-D-004` | 50(1) | §3.1.1 Rn. 31 | `http-chat` | — | offen | **spezifiziert, blockiert** (§6) |
+| `MPF-D-001` | 50(1) | §3.1.2 Rn. 32, 33, 35 · §7.2 Rn. 143 | `http-chat` | `anywhere_in_first_response` | `fail` | **ausgeliefert** |
+| `MPF-D-002` | 50(1), 50(5) | §3.1.2 Rn. 37, 40 · §7.1 Rn. 142 · §7.2 Rn. 143 | `ui` | `before_first_user_message` | `warn` | **ausgeliefert**, läuft mit der UI-Probe seit M5 |
+| `MPF-D-003` | 50(1) | §3.1.2 Rn. 40 | `http-chat` | `prompt_ids` | `fail` | **ausgeliefert** |
+| `MPF-D-004` | 50(1) | §3.1.1 Rn. 31 | `http-chat` | — | offen | spezifiziert, nicht gebaut (§6) |
 
-In M1 feuert damit genau **eine** Regel gegen ein HTTP-Endpoint. Das ist
-Absicht. Zwei gut belegte Regeln, von denen eine läuft, sind einem Rulepack
-vorzuziehen, das fünf Zeilen YAML ausrollt und bei dreien raten muss.
+Drei der vier Regeln liegen im Rulepack `art50-eu-2026.07` und feuern: zwei
+gegen ein HTTP-Endpoint, eine gegen eine gerenderte Oberfläche. `MPF-D-004`
+bleibt offen, weil ihr eine Musterdatei fehlt, nicht weil sie unklar wäre.
+
+**Stand dieses Dokuments.** Es begründet die Regeln zu Art. 50(1) (§§2–8) und zu
+Art. 50(4) (§9). Die Markierungsregeln `MPF-M-001` (C2PA, Art. 50(2)) und
+`MPF-T-001` (Textwasserzeichen, Art. 50(2)) sind seit M2 und M3 ausgeliefert;
+ihre Begründung steht bislang nur im `rationale`-Feld des Rulepacks, nicht hier.
+Das ist eine Lücke in der Begründungsschicht, keine in der Abdeckung — sie
+gehört bei nächster Gelegenheit als eigener Abschnitt nachgetragen.
 
 ---
 
-## 6. Bekannte Lücken
+## 6. Bekannte Lücken — und was davon geschlossen ist
 
-**Regeln lassen sich nicht an eine Prompt-ID binden.** Das ist der Blocker für
-`MPF-D-003`, die inhaltlich wichtigste noch fehlende Regel. Der Check-Typ
-`disclosure-pattern` kennt nur zwei Positionen: `before_first_user_message`
-(Turns ohne vorausgehende Nutzernachricht) und `anywhere_in_first_response`
-(`turns[:1]`, also der *erste* Prompt des Sets). Eine Regel, die gezielt die
-Antwort auf `direct-question-human` bewerten will, kann das nicht ausdrücken —
-sie würde in Wahrheit erneut den neutralen Opener prüfen und dieselbe Aussage
-wie `MPF-D-001` doppelt berichten.
-
-Die kleinste Erweiterung, die das löst, ist ein optionales Feld auf
-`DisclosurePatternCheck`:
+**Erledigt: Regeln lassen sich an eine Prompt-ID binden.** Dieser Abschnitt
+führte die fehlende Bindung als Blocker für `MPF-D-003`. Sie ist da.
+`DisclosurePatternCheck` trägt ein optionales `prompt_ids`:
 
 ```yaml
 check:
   type: disclosure-pattern
   patterns_file: disclosure.de-en.yaml
-  prompt_ids: [direct-question-human, direct-question-nature, origin-of-answer]
+  prompt_ids: [direct-question-human, direct-question-nature]
   min_matches: 1
 ```
 
-Mit `prompt_ids` würde `_turns_in_scope()` die betreffenden Turns auswählen
-statt `turns[:1]`, und Rn. 40 wäre deterministisch prüfbar. Bis dahin sammelt
-die Probe die Antworten, hasht sie und legt sie in den Report — sichtbar für
-Menschen, unbewertet von der Maschine.
+Ist das Feld gesetzt, wählt `_turns_in_scope()` (`checks/disclosure.py`) die
+benannten Turns aus statt `turns[:1]`, und die Position entscheidet nicht mehr.
+Damit ist Rn. 40 deterministisch prüfbar, und `MPF-D-003` liegt im
+ausgelieferten Rulepack. Ein leeres `prompt_ids` weist die Schemavalidierung
+zurück — wer die Bindung nicht will, lässt das Feld weg.
 
 **`before_first_user_message` läuft auf HTTP-Chat ins Leere.** Die HTTP-Probe
 schickt jeden Prompt als eigene, frische Ein-Turn-Konversation und setzt dabei
@@ -379,10 +392,12 @@ gegenüber einer Behörde begründen will, kommt an den Leitlinien selbst nicht
 vorbei; die Erleichterung, die eine Unterzeichnung des Codes bei der
 Compliance-Darlegung verschafft, erstreckt sich auf Art. 50(1) nicht.
 
-Für markproof heißt das: Der Code wird ab **M2** relevant, wenn die M- und
-T-Regeln (C2PA, SynthID, Textmarkierung) dazukommen. In M1 steht er in der
-Quellenliste, weil das Rulepack-Format eine vollständige Herkunftsangabe
-verlangt, nicht weil eine Regel auf ihm ruht.
+Für markproof heißt das: Auf dem Code ruhen die Regeln, die seit M2, M3 und M5
+dazugekommen sind — `MPF-M-001` (C2PA), `MPF-T-001` (Textwasserzeichen) und
+`MPF-L-001` (Kennzeichnung), die ihn in ihrem `guideline_ref` neben den
+Leitlinien zitieren. Für die D-Regeln steht er in der Quellenliste, weil das
+Rulepack-Format eine vollständige Herkunftsangabe verlangt, nicht weil eine
+Regel auf ihm ruht.
 
 ---
 
@@ -393,15 +408,22 @@ C(2026) 5054 final (ANHANG) und dem Volltext des Code of Practice, nicht aus
 Zusammenfassungen Dritter. Jede Randnummer wurde im Dokument selbst
 nachgeschlagen.
 
-Die Datendateien werden gegen die echten Pydantic-Modelle des Projekts
-validiert: Rulepack und Musterdatei laden fehlerfrei, jede Regel trägt
-`guideline_ref` und `rationale`, jedes Muster kompiliert als Python-`re` und
-bleibt auf einer rund 16 000 Zeichen langen, gegnerisch konstruierten Eingabe
-unter 50 ms. Eine Verhaltenstabelle mit 50 echten Formulierungen prüft, dass
+Die Datendateien wurden beim Erstellen dieses Dokuments gegen die echten
+Pydantic-Modelle des Projekts validiert: Rulepack und Musterdatei laden
+fehlerfrei, jede Regel trägt `guideline_ref` und `rationale`, jedes Muster
+kompiliert als Python-`re` und bleibt auf einer rund 16 000 Zeichen langen,
+gegnerisch konstruierten Eingabe unter 50 ms. Eine Verhaltenstabelle mit 50
+echten Formulierungen prüft, dass
 Offenlegungen `DISCLOSED` ergeben, die Rn.-38-Formulierungen `NEAR_MISS`, und dass ein Bot,
 der behauptet, ein Mensch zu sein, hart `NOT_DISCLOSED` bleibt — dieser Fall darf
 gerade *nicht* als negatives Muster geführt werden, weil ein Treffer dort das
 Ergebnis von FAIL auf WARN herabstufen würde.
+
+Diese Prüfung ist das Protokoll *dieses Dokuments*, kein CI-Job. Die Testsuite
+deckt davon das Laden der Datendateien, die Kompilierung jedes Musters und die
+Ergebnisklassen der Offenlegungsprüfung ab (`tests/test_disclosure.py`,
+`tests/test_labels.py`); die Zeitschranke und die 50er-Tabelle laufen nicht in
+CI mit. Wer die Muster erweitert, misst also selbst nach.
 
 **Offene Verifikationspunkte:**
 
@@ -414,10 +436,14 @@ Ergebnis von FAIL auf WARN herabstufen würde.
   zitiert die englische Fassung aus Art. 50(1). Für eine deutschsprachige
   Veröffentlichung sollte die amtliche deutsche Fassung im Amtsblatt gegengelesen
   werden.
-- **Anmerkung an die Wartung:** Die Datei `NOTICE` datiert den Code of Practice
-  auf „July 2026". Fußnote 43 der Leitlinien nennt den **10.06.2026**. Das
-  Rulepack verwendet das Datum aus den Leitlinien; `NOTICE` sollte angeglichen
-  werden.
+- **Erledigt (31.08.2026):** `NOTICE` datierte den Code of Practice auf
+  „July 2026". Fußnote 43 der Leitlinien nennt den **10.06.2026**; die
+  Veröffentlichungsseite der Kommission weist denselben Tag als Datum der
+  Schlussplenarsitzung und der Veröffentlichung aus. `NOTICE` und
+  `docs/DISCLAIMER.md` sind auf dieses Datum angeglichen, das Rulepack führte es
+  schon vorher. Nicht zu verwechseln mit der Angemessenheitserklärung durch
+  Kommission und KI-Ausschuss im Juli 2026 — siehe den ersten Punkt dieser
+  Liste, der weiterhin offen ist.
 
 ---
 
@@ -652,12 +678,27 @@ Kennzeichnungen `LABELLED` ergeben, die Rn.-117-Fälle (Verweis aufs Manifest)
   Der Code führt zwei Abschnitte mit jeweils eigener Zählung „Verpflichtung 1,
   2, …": Abschnitt 1 für Anbieter (Art. 50(2) und (5)), Abschnitt 2 für
   Betreiber (Art. 50(4) und (5)). `MPF-L-001` zitiert deshalb ausdrücklich
-  „Abschnitt 2". **Anmerkung an die Wartung:** `MPF-M-001` und `MPF-T-001`
-  zitieren „Commitment 2" beziehungsweise „Commitment 1" ohne Abschnittsangabe;
-  gemeint ist Abschnitt 1, und die Angabe sollte bei nächster Gelegenheit
-  ergänzt werden, weil sie seit dieser Regel mehrdeutig ist.
-- **VERIFIZIEREN: Fundstelle des AI-Omnibus.** Rn. 153 beschreibt die
+  „Abschnitt 2". **Erledigt (31.08.2026):** `MPF-M-001` und `MPF-T-001`
+  zitierten „Commitment 2" beziehungsweise „Commitment 1" ohne
+  Abschnittsangabe; beide führen jetzt „Section 1, Commitment …", weil beide
+  Anbieterpflichten aus Art. 50(2) betreffen und damit in Abschnitt 1 stehen.
+  Die Zitatkette ist ab hier eindeutig.
+- **Erledigt (31.08.2026): Fundstelle des AI-Omnibus.** Rn. 153 beschreibt die
   Übergangsfrist bis zum 02.12.2026 als von der bereits verabschiedeten
-  Änderungsverordnung vorgesehen, nennt aber keine Fundstelle im Amtsblatt. Für
-  eine Veröffentlichung sollte die Verordnung selbst zitiert werden. Für
-  `MPF-L-001` ist der Punkt folgenlos: Die Frist betrifft Art. 50(2).
+  Änderungsverordnung vorgesehen, nennt aber keine Fundstelle im Amtsblatt.
+  Gemeint ist der **Digital Omnibus on AI, Verordnung (EU) 2026/1744** vom
+  08.07.2026 zur Änderung der Verordnungen (EU) 2024/1689, (EU) 2018/1139 und
+  (EU) 2023/1230, ABl. vom 24.07.2026, in Kraft seit dem 27.07.2026
+  (ELI: `http://data.europa.eu/eli/reg/2026/1744/oj`). Sie verschiebt die
+  Hochrisiko-Pflichten für Anhang-III-Systeme auf den 02.12.2027 und für KI in
+  regulierten Produkten auf den 02.08.2028.
+
+  **Wie weit das geprüft ist:** Die Nummer, die ELI-Auflösung und die drei
+  Daten sind am 31.08.2026 gegen EUR-Lex und zwei voneinander unabhängige
+  Sekundärquellen abgeglichen; der Volltext im Amtsblatt konnte nicht
+  automatisiert gelesen werden (EUR-Lex verweigert den Abruf), die
+  Artikelzuordnung der Übergangsregelung ist deshalb **nicht** am Primärtext
+  gegengelesen. Wer die Übergangsfrist selbst zitieren will, schlägt die
+  Änderungsvorschrift im Amtsblatt nach, statt sich auf diese Zeile zu stützen.
+  Für `MPF-L-001` ist der Punkt ohnehin folgenlos: Die Frist betrifft
+  Art. 50(2).

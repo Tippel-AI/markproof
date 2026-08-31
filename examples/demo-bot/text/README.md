@@ -37,7 +37,7 @@ differ only in provenance.
 
 ## Measured
 
-Config: [`../watermark_config.json`](../watermark_config.json) — `gpt2`,
+Config: [`../watermark_config.demo.json`](../watermark_config.demo.json) — `gpt2`,
 `ngram_len=5`, three keys. Regenerate with `make_texts.py`, which prints this
 table and refuses to write a file that misses any threshold.
 

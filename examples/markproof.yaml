@@ -9,28 +9,23 @@ version: 1
 target:
   name: "support-bot prod"
   probes:
-    - id: chat-http
-      type: http-chat
-      url: https://api.example.com/v1/chat/completions   # OpenAI-kompatibel
-      auth: { header: Authorization, env: MARKPROOF_TOKEN }
-      dialect: openai-chat            # v1: openai-chat | generic-json
-      prompts_file: probes/prompts.de.yaml
-    - id: chat-ui
-      type: ui                        # optional, Extra [ui]
-      url: https://www.example.com/support
-      chat_selector: "#chat-widget"
-    - id: image-gen
-      type: media
-      url: https://api.example.com/v1/images/generations
-      formats: [png, jpeg]
+  - id: chat-http
+    type: http-chat
+    url: https://api.example.com/v1/chat/completions     # OpenAI-kompatibel
+    auth: {header: Authorization, env: MARKPROOF_TOKEN}
+    dialect: openai-chat              # v1: openai-chat | generic-json
+    prompts_file: probes/prompts.de.yaml
+  - id: chat-ui
+    type: ui                          # optional, Extra [ui]
+    url: https://www.example.com/support
+    chat_selector: "#chat-widget"
+  - id: image-gen
+    type: media
+    url: https://api.example.com/v1/images/generations
+    response_format: url
 text_marking:
   method: synthid                     # synthid | metadata | none-declared
-  synthid_config: secrets/watermark_config.json   # nie ins Repo; via CI-Secret
-  detector: mean-g                    # mean-g (Default, kein Modell nötig) | bayesian
-  # detector_model: secrets/bayesian_detector/   # nur bei detector: bayesian
+  watermark_config: secrets/watermark_config.json
 rulepack: art50-eu-2026.07
 report:
   sign_key: env:MARKPROOF_SIGNING_KEY  # Ed25519 private key, PEM
-  formats: [json, summary]            # Default: null Systemdeps
-  # formats: [json, summary, pdf]     # pdf = reportlab (pure Python)
-  # formats: [json, pdf-html]         # nur mit Extra [pdf-html] + Pango/cairo

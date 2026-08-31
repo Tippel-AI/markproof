@@ -12,6 +12,7 @@ API and the rulepack format can still change.
 
 ```sh
 uv sync --extra dev
+uv run pre-commit install   # ruff and the SPDX-header check, on every commit
 uv run ruff check .
 uv run mypy
 uv run pytest
@@ -37,9 +38,18 @@ which is honest, rather than PASS rules that guess.
   pure function; identical inputs must produce byte-identical findings. If your
   change introduces ordering, time or locale dependence, it will fail the
   determinism job.
-- **Every file carries an SPDX header.** `Apache-2.0` for code,
-  `CC-BY-4.0` for anything under `src/markproof/rulepacks/`,
-  `src/markproof/patterns/` and `docs/`.
+- **Every file that can carry a comment carries an SPDX header.** `Apache-2.0`
+  for code, `CC-BY-4.0` for anything under `src/markproof/rulepacks/`,
+  `src/markproof/patterns/`, `src/markproof/prompts/` and `docs/`. The
+  `spdx-header` hook in `.pre-commit-config.yaml` checks it on every Python,
+  YAML, Markdown, TOML and shell file. Four groups cannot hold one and are
+  covered by the directory perimeter in `NOTICE` §1 instead: the media fixtures
+  and demo images, the JSON fixtures and manifests (JSON has no comment
+  syntax), the demo texts under `examples/demo-bot/text/` (a header would
+  change the token sequence the watermark is measured on), and `LICENSE`,
+  `LICENSE-DATA` and `NOTICE`, which are the licence texts themselves. Adding a
+  file of one of those kinds means checking that the perimeter still covers it,
+  not writing a sidecar.
 - **No verbatim normative text in rulepacks.** Paraphrase and cite the clause
   number; keep the mandatory `attribution:` line. One short quote is the ceiling.
 - **Test media must be your own work.** No third-party copyrighted media enters
@@ -57,7 +67,8 @@ change, and say in the description why the new golden output is correct — an
 unreviewed golden update quietly redefines what "conformant" means.
 
 By contributing you agree that your contributions are licensed under Apache-2.0
-(code) or CC-BY-4.0 (rulepacks, patterns, docs), matching the file you touch.
+(code) or CC-BY-4.0 (rulepacks, patterns, prompt sets, docs), matching the file
+you touch.
 
 ## Security
 

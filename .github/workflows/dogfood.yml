@@ -91,7 +91,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ env.HF_HOME }}
-          key: hf-gpt2-${{ hashFiles('examples/demo-bot/watermark_config.json') }}
+          key: hf-gpt2-${{ hashFiles('examples/demo-bot/watermark_config.demo.json') }}
           restore-keys: hf-gpt2-
 
       - name: Install the demo-bot

@@ -149,7 +149,7 @@ property of the token sequence, not of whatever produced it, so a tokenizer and
 scores about 0.09 lower than English under the same config, and why the demo
 config carries only three keys.
 
-### `watermark_config.json`
+### `watermark_config.demo.json`
 
 Detection needs the *generation-side* configuration, which is exactly why
 markproof is a self-conformance test: it verifies an operator against their own
@@ -173,8 +173,17 @@ mark, and, more to the point, can strip or forge it. Ours are committed because
 a demo target nobody can check is not a demo target; a real deployment keeps
 them in a secrets manager or CI secret and hands markproof a path, never a
 committed file. The repository's `.gitignore` already treats
-`watermark_config.json` as a secret class for exactly this reason — the demo's
+`watermark_config*.json` as a secret class for exactly this reason — the demo's
 copy is a deliberate exception to that rule, not an oversight.
+
+**Why the file is called `watermark_config.demo.json`.** `WatermarkConfig`
+rejects unknown fields, so the file cannot carry a `"_comment"` saying what it
+is; a JSON object of six numeric-looking settings looks the same whether the
+keys are throwaway or production. The name is therefore the marking, and it is
+the only one that survives someone copying the file out of this repository as a
+template. If you start from it, replace the `keys` before you mark anything and
+rename it back to `watermark_config.json`, which is the name `.gitignore`
+protects.
 
 `gpt2` is the tokenizer because it is the most widely available one there is:
 pure byte-level BPE in a single `tokenizer.json`, no `sentencepiece`, no gated
