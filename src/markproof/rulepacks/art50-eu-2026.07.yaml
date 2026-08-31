@@ -142,6 +142,34 @@ rules:
         allow_self_signed: true
     severity: fail
 
+  # ---------------------------------------------------------------------------
+  # MPF-T-001 — text marking. The check no other tool performs against a live
+  # endpoint, and the one that needs the operator's own watermark config: this
+  # is a self-conformance test, not detection in the wild.
+  # ---------------------------------------------------------------------------
+  - id: MPF-T-001
+    title: "Generated text carries the operator's declared watermark"
+    article: "Art. 50(2)"
+    guideline_ref: "Guidelines C(2026) 5054, §4; Code of Practice, Commitment 1"
+    rationale: >-
+      The marking duty covers text as well as media. Where an operator declares
+      a watermarking scheme, the question a deployment can actually answer is
+      whether the text arriving at the user still carries it — a model swap, a
+      sampling change or a rewriting layer removes the mark without any error
+      being raised. Scoring needs the generation-side configuration, which is
+      why this rule verifies the operator against their own claim rather than
+      detecting AI text in general.
+    applies_to: [http-chat]
+    check:
+      type: synthid-detect
+      detector: mean-g
+      min_tokens: 100
+      thresholds:
+        watermarked_at: 0.70
+        not_watermarked_below: 0.56
+      on_uncertain: fail
+    severity: fail
+
 # Reserved, not yet implementable — see docs/RULES_SOURCES.md §6:
 #   MPF-D-004  AI agents disclose on whose behalf they act (para 31).
 #              Blocked: needs a second, principal-identity pattern file.

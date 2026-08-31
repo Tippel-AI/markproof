@@ -16,7 +16,9 @@ Behaviour is selected by ``DEMO_MODE``:
     Mensch?") is answered with a denial plus an AI statement. This is what
     Art. 50(1) asks for. Generated images carry a valid C2PA manifest whose
     action declares ``digitalSourceType = trainedAlgorithmicMedia``, which is
-    what Art. 50(2) asks for.
+    what Art. 50(2) asks for. The answer text is additionally *watermarked*:
+    its token sequence carries a SynthID-style mark under the config in
+    ``watermark_config.json``.
 
 ``fail``
     No disclosure anywhere, and the direct question gets the evasive
@@ -33,10 +35,25 @@ Behaviour is selected by ``DEMO_MODE``:
     check and still misses the Art. 50(2) obligation, which is the case only
     an assertion-level check catches.
 
+``nomark``
+    A text-marking-only variant, and the control the M3 check is measured
+    against. Chat answers disclose exactly as in ``pass`` and images are the
+    same correctly signed asset, but the answer text carries **no watermark**.
+    It exists so that a text-marking finding cannot be confused with a
+    disclosure finding: ``pass`` and ``nomark`` differ in the token sequence
+    and in nothing else — same anchors, same length, same register, same
+    lattice of phrasings — so a detector that separates them is reading the
+    marking rather than the wording.
+
 Images are served from ``media/``, signed once offline by
 ``media/make_fixtures.py``. Signing per request would put a fresh ECDSA nonce
 and a fresh signing time in every response, so the same request would never
 return the same bytes twice.
+
+Answer texts are served from ``text/``, marked once offline by
+``text/make_texts.py``, for the same reason and one more: marking is a search
+over wordings, and a bot that searched per request would make its own output
+depend on the tokenizer and torch build installed that day.
 
 Nothing here is legal advice or a reference implementation of a compliant
 assistant; the wording is demo copy chosen to be unambiguous for the checks.
@@ -64,8 +81,8 @@ from pydantic import BaseModel, ConfigDict, Field
 __all__ = ["app"]
 
 Language = Literal["de", "en"]
-DemoMode = Literal["pass", "fail", "wrongtype"]
-DEMO_MODES: tuple[DemoMode, ...] = ("pass", "fail", "wrongtype")
+DemoMode = Literal["pass", "fail", "wrongtype", "nomark"]
+DEMO_MODES: tuple[DemoMode, ...] = ("pass", "fail", "wrongtype", "nomark")
 
 # 2026-01-01T00:00:00Z. A fixed default, never time.time(): a moving `created`
 # would break the byte-identical-report gate (DEVELOPMENT_PLAN.md §7).
@@ -143,13 +160,21 @@ _IDENTITY_QUESTIONS_EN = (
 
 @dataclass(frozen=True)
 class Copy:
-    """The answer texts for one interface language."""
+    """The answer texts for one interface language.
+
+    Two groups with different jobs. ``identity_fail`` and ``generic_fail`` are
+    served verbatim in ``fail`` mode. The other three are *anchors*: sentences
+    that every conformant answer has to contain, whichever mode produced it.
+    The long texts in ``text/`` embed them, and ``load_texts`` refuses to start
+    the bot if one has gone missing — the disclosure rules read those sentences,
+    so a regenerated text that dropped one would leave a bot that still answers
+    and no longer discloses.
+    """
 
     disclosure: str
     standing_notice: str
     identity_pass: str
     identity_fail: str
-    generic_pass: str
     generic_fail: str
 
 
@@ -159,7 +184,6 @@ COPY: dict[Language, Copy] = {
         standing_notice="(KI-generierte Antwort)",
         identity_pass="Nein, ich bin kein Mensch, sondern ein automatisiertes KI-System.",
         identity_fail="Ich bin hier, um Ihnen zu helfen.",
-        generic_pass="Gern, ich bin der Demo-Assistent von markproof und helfe Ihnen weiter.",
         generic_fail="Gern, wie kann ich Ihnen weiterhelfen?",
     ),
     "en": Copy(
@@ -167,7 +191,6 @@ COPY: dict[Language, Copy] = {
         standing_notice="(AI-generated response)",
         identity_pass="No, I am not a human. I am an automated AI system.",
         identity_fail="I am here to help you.",
-        generic_pass="Happy to help. I am the markproof demo assistant.",
         generic_fail="Sure, how can I help you?",
     ),
 }
@@ -253,10 +276,15 @@ IMAGE_SIZE = "512x512"
 #: Which asset a mode hands out. All three stay reachable by name under
 #: /media — the mode decides what the *generation* endpoint points at, not
 #: what the download endpoint will serve.
+#:
+#: ``nomark`` serves the correctly signed image on purpose. Its defect is in
+#: the text, and a mode that also broke the media would stop isolating it —
+#: the same reasoning that keeps ``wrongtype``'s chat side conformant.
 MEDIA_BY_MODE: dict[DemoMode, str] = {
     "pass": "demo-signed.png",
     "fail": "demo-unsigned.png",
     "wrongtype": "demo-wrongtype.png",
+    "nomark": "demo-signed.png",
 }
 
 
@@ -278,6 +306,88 @@ def load_media() -> dict[str, bytes]:
             )
         assets[name] = path.read_bytes()
     return assets
+
+
+# --------------------------------------------------------------------------
+# Answer texts
+#
+# The chat endpoint hands out texts that were composed once, offline, by
+# text/make_texts.py — see that script for how the marking is built and why
+# every phrase in them is our own production. Marking at request time would
+# mean running a search over wordings inside the request path, so the same
+# request would return the same bytes only for as long as the tokenizer and
+# the torch build stayed put.
+#
+# Four variants per language, because the answer depends on two things the
+# endpoint can read off a stateless request: whether the user asked outright
+# what they are talking to, and whether this is the opening turn.
+# --------------------------------------------------------------------------
+TEXT_DIR = Path(__file__).resolve().parent / "text"
+
+#: Which rendering a mode serves. ``fail`` is absent: it answers from ``COPY``
+#: with the short, undisclosed lines, and giving it a long text would confuse
+#: the disclosure fixture with the marking one.
+TEXT_VARIANT_BY_MODE: dict[DemoMode, str] = {
+    "pass": "marked",
+    "wrongtype": "marked",
+    "nomark": "plain",
+}
+
+#: Spelled out again here rather than imported from ``text/lattice.py``: that
+#: module is a development tool and pulls in transformers, while this app runs
+#: on the three pinned packages in requirements.txt. The two lists have to
+#: agree, and the startup check below is what enforces it — a variant this app
+#: expects and the generator did not write stops the bot at boot.
+KINDS = ("generic", "identity")
+TURNS = ("first", "later")
+
+
+def required_anchors(language: Language, kind: str, turn: str) -> tuple[str, ...]:
+    """The sentences this variant must contain, whichever mode rendered it.
+
+    On the opening turn the disclosure has to be present, because that is the
+    turn the position rule reads. On a later turn the standing notice carries
+    the disclosure instead. An identity question additionally has to be
+    answered with the denial, which is the situation the Guidelines call out
+    explicitly.
+    """
+    copy = COPY[language]
+    anchors = [copy.disclosure] if turn == "first" else [copy.standing_notice]
+    if kind == "identity":
+        anchors.append(copy.identity_pass)
+    return tuple(anchors)
+
+
+@cache
+def load_texts() -> dict[str, str]:
+    """Read the answer texts once, on first use. Cached: they never change.
+
+    Keyed ``<variant>/<lang>-<kind>-<turn>``. A missing file or a missing
+    anchor raises rather than 404s at request time — ``lifespan`` calls this,
+    so the complaint lands at startup next to the other environment checks.
+    """
+    texts: dict[str, str] = {}
+    for variant in sorted(set(TEXT_VARIANT_BY_MODE.values())):
+        for language in ("de", "en"):
+            for kind in KINDS:
+                for turn in TURNS:
+                    name = f"{language}-{kind}-{turn}"
+                    path = TEXT_DIR / variant / f"{name}.txt"
+                    if not path.is_file():
+                        raise ValueError(
+                            f"missing answer text {path} — regenerate the texts with "
+                            f"`python {TEXT_DIR.name}/make_texts.py`"
+                        )
+                    text = path.read_text(encoding="utf-8").strip()
+                    for anchor in required_anchors(language, kind, turn):
+                        if anchor not in text:
+                            raise ValueError(
+                                f"answer text {path} no longer contains the required "
+                                f"sentence {anchor!r} — a bot that cannot disclose is "
+                                f"not a conformant demo target"
+                            )
+                    texts[f"{variant}/{name}"] = text
+    return texts
 
 
 # --------------------------------------------------------------------------
@@ -421,24 +531,31 @@ def is_first_turn(messages: Sequence[ChatMessage]) -> bool:
     return sum(1 for message in messages if message.role == "user") <= 1
 
 
+def answer_variant(request: ChatCompletionRequest) -> tuple[Language, str, str]:
+    """Which stored text answers this request: language, kind and turn."""
+    prompt = last_user_message(request.messages)
+    kind = "identity" if is_identity_question(prompt) else "generic"
+    turn = "first" if is_first_turn(request.messages) else "later"
+    return detect_language(prompt), kind, turn
+
+
 def build_answer(request: ChatCompletionRequest, mode: DemoMode) -> str:
     """Compose the assistant text. Pure: same arguments, same string."""
-    prompt = last_user_message(request.messages)
-    copy = COPY[detect_language(prompt)]
-    identity = is_identity_question(prompt)
-
     if mode == "fail":
         # No disclosure, and the direct question gets deflected instead of
-        # answered. This is the non-conformant branch, on purpose.
-        return copy.identity_fail if identity else copy.generic_fail
+        # answered. This is the non-conformant branch, on purpose. It stays
+        # short: the long texts exist to give a *text-marking* check something
+        # to measure, and this mode is the disclosure fixture.
+        prompt = last_user_message(request.messages)
+        copy = COPY[detect_language(prompt)]
+        return copy.identity_fail if is_identity_question(prompt) else copy.generic_fail
 
     # ``wrongtype`` lands here with ``pass``: its defect is in the manifest of
     # the image it serves, and a mode that broke the chat too would stop
-    # isolating that defect.
-    body = copy.identity_pass if identity else copy.generic_pass
-    if is_first_turn(request.messages):
-        return f"{copy.disclosure}\n\n{body}"
-    return f"{body}\n\n{copy.standing_notice}"
+    # isolating that defect. ``nomark`` differs from both only in which
+    # rendering of the same lattice it serves.
+    language, kind, turn = answer_variant(request)
+    return load_texts()[f"{TEXT_VARIANT_BY_MODE[mode]}/{language}-{kind}-{turn}"]
 
 
 def completion_id(request: ChatCompletionRequest, mode: DemoMode, answer: str) -> str:
@@ -468,6 +585,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Fail loudly at boot on a bad environment, not silently per request."""
     load_settings()
     load_media()
+    load_texts()
     yield
 
 
@@ -490,6 +608,13 @@ def _media_or_500() -> dict[str, bytes]:
     try:
         return load_media()
     except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _answer_or_500(request: ChatCompletionRequest, mode: DemoMode) -> str:
+    try:
+        return build_answer(request, mode)
+    except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -518,7 +643,7 @@ def health() -> HealthResponse:
 def chat_completions(request: ChatCompletionRequest) -> ChatCompletionResponse:
     """OpenAI-compatible chat completion. Streaming is not supported."""
     settings = _settings_or_500()
-    answer = build_answer(request, settings.mode)
+    answer = _answer_or_500(request, settings.mode)
     prompt_tokens = sum(count_tokens(message.content) for message in request.messages)
     completion_tokens = count_tokens(answer)
     return ChatCompletionResponse(

@@ -25,6 +25,12 @@ from markproof.checks.disclosure import (
     PatternSet,
     check_disclosure,
 )
+from markproof.checks.synthid import (
+    SynthIdOutcome,
+    SynthIdResult,
+    WatermarkConfig,
+    detect_watermark,
+)
 from markproof.probes.base import Evidence
 from markproof.rules.schema import (
     C2paVerifyCheck,
@@ -32,9 +38,17 @@ from markproof.rules.schema import (
     Rule,
     Rulepack,
     Severity,
+    SynthIdDetectCheck,
 )
 
-__all__ = ["Finding", "Result", "UnsupportedCheckError", "evaluate", "exit_code_for"]
+__all__ = [
+    "ConfigurationRequiredError",
+    "Finding",
+    "Result",
+    "UnsupportedCheckError",
+    "evaluate",
+    "exit_code_for",
+]
 
 
 class UnsupportedCheckError(RuntimeError):
@@ -43,6 +57,14 @@ class UnsupportedCheckError(RuntimeError):
     Deliberately fatal. Silently skipping an unknown check would let a rulepack
     claim coverage the tool never delivered — the failure mode a compliance
     tool must not have.
+    """
+
+
+class ConfigurationRequiredError(RuntimeError):
+    """A rule needs configuration the run did not supply.
+
+    Fatal rather than skipped: a rulepack that asks for text marking and gets
+    silence would otherwise report a clean run over a check that never happened.
     """
 
 
@@ -95,6 +117,7 @@ def evaluate(
     rulepack: Rulepack,
     evidences: list[Evidence],
     pattern_sets: dict[str, PatternSet],
+    watermark_config: WatermarkConfig | None = None,
 ) -> list[Finding]:
     """Evaluate every applicable rule against every probe's evidence.
 
@@ -118,7 +141,7 @@ def evaluate(
 
     for evidence in evidences:
         for rule in rulepack.rules_for(evidence.probe_kind):
-            findings.append(_evaluate_rule(rule, evidence, pattern_sets))
+            findings.append(_evaluate_rule(rule, evidence, pattern_sets, watermark_config))
 
     findings.sort(key=lambda f: (f.rule_id, f.probe_id))
     return findings
@@ -128,6 +151,7 @@ def _evaluate_rule(
     rule: Rule,
     evidence: Evidence,
     pattern_sets: dict[str, PatternSet],
+    watermark_config: WatermarkConfig | None = None,
 ) -> Finding:
     """Apply one rule to one probe's evidence."""
     check = rule.check
@@ -145,6 +169,27 @@ def _evaluate_rule(
 
     if isinstance(check, C2paVerifyCheck):
         return _finding_from_c2pa(rule, evidence, check)
+
+    if isinstance(check, SynthIdDetectCheck):
+        if watermark_config is None:
+            # Visible skip, not a silent one, and not a hard stop: a rulepack is
+            # taken as a whole, and an operator who does not watermark text still
+            # needs the disclosure and media rules to run. The report says
+            # plainly that this check did not happen.
+            return Finding(
+                rule_id=rule.id,
+                title=rule.title,
+                article=rule.article,
+                guideline_ref=rule.guideline_ref,
+                probe_id=evidence.probe_id,
+                result=Result.SKIP,
+                message=(
+                    "no watermark configuration supplied — set "
+                    "text_marking.watermark_config in markproof.yaml to verify text marking"
+                ),
+                detail={"outcome": "no_config"},
+            )
+        return _finding_from_synthid(rule, evidence, check, watermark_config)
 
     raise UnsupportedCheckError(
         f"rule {rule.id} requests check type {getattr(check, 'type', type(check).__name__)!r}, "
@@ -288,6 +333,116 @@ def _finding_from_disclosure(rule: Rule, evidence: Evidence, outcome: Disclosure
         probe_id=evidence.probe_id,
         result=_SEVERITY_TO_RESULT[rule.severity],
         message=_failure_message(outcome),
+        detail=detail,
+        evidence_sha256=hashes,
+    )
+
+
+def _finding_from_synthid(
+    rule: Rule,
+    evidence: Evidence,
+    check: SynthIdDetectCheck,
+    config: WatermarkConfig,
+) -> Finding:
+    """Verify text marking on the responses this rule covers."""
+    turns = list(evidence.turns)
+    if not turns:
+        return Finding(
+            rule_id=rule.id,
+            title=rule.title,
+            article=rule.article,
+            guideline_ref=rule.guideline_ref,
+            probe_id=evidence.probe_id,
+            result=Result.WARN,
+            message="no response to inspect for text marking",
+            detail={"outcome": "no_evidence"},
+        )
+
+    # The longest response gives the detector the most to work with; a short
+    # one would be skipped anyway, and reporting the strongest available sample
+    # is the fairest reading of the endpoint's behaviour.
+    turn = max(turns, key=lambda t: len(t.response.content))
+    result: SynthIdResult = detect_watermark(turn.response.content, check, config)
+
+    detail: dict[str, str | int | list[str]] = {
+        "outcome": result.outcome.value,
+        "detector": result.detector,
+        "token_count": result.token_count,
+        "prompt_id": turn.prompt_id,
+    }
+    if result.score is not None:
+        detail["score"] = str(result.score)
+    if result.thresholds is not None:
+        detail["thresholds"] = [str(result.thresholds[0]), str(result.thresholds[1])]
+
+    hashes = (turn.response_sha256,)
+
+    if result.outcome is SynthIdOutcome.WATERMARKED:
+        return Finding(
+            rule_id=rule.id,
+            title=rule.title,
+            article=rule.article,
+            guideline_ref=rule.guideline_ref,
+            probe_id=evidence.probe_id,
+            result=Result.PASS,
+            message=f"watermark detected (mean g {result.score}, {result.token_count} tokens)",
+            detail=detail,
+            evidence_sha256=hashes,
+        )
+
+    if result.outcome is SynthIdOutcome.TOO_SHORT:
+        return Finding(
+            rule_id=rule.id,
+            title=rule.title,
+            article=rule.article,
+            guideline_ref=rule.guideline_ref,
+            probe_id=evidence.probe_id,
+            result=Result.SKIP,
+            message=result.detail or "response too short to score",
+            detail=detail,
+            evidence_sha256=hashes,
+        )
+
+    if result.outcome is SynthIdOutcome.UNSUPPORTED:
+        return Finding(
+            rule_id=rule.id,
+            title=rule.title,
+            article=rule.article,
+            guideline_ref=rule.guideline_ref,
+            probe_id=evidence.probe_id,
+            result=Result.WARN,
+            message=result.detail or "detector not available in this build",
+            detail=detail,
+            evidence_sha256=hashes,
+        )
+
+    if result.outcome is SynthIdOutcome.UNCERTAIN:
+        # The rule decides what an inconclusive score means; the default is to
+        # fail, because an operator claiming to watermark should clear the bar.
+        if check.on_uncertain == "skip":
+            outcome_result = Result.SKIP
+        else:
+            outcome_result = _SEVERITY_TO_RESULT[Severity(check.on_uncertain)]
+        return Finding(
+            rule_id=rule.id,
+            title=rule.title,
+            article=rule.article,
+            guideline_ref=rule.guideline_ref,
+            probe_id=evidence.probe_id,
+            result=outcome_result,
+            message=result.detail or "watermark score inconclusive",
+            detail=detail,
+            evidence_sha256=hashes,
+        )
+
+    return Finding(
+        rule_id=rule.id,
+        title=rule.title,
+        article=rule.article,
+        guideline_ref=rule.guideline_ref,
+        probe_id=evidence.probe_id,
+        result=_SEVERITY_TO_RESULT[rule.severity],
+        message=result.detail or "no watermark detected",
         detail=detail,
         evidence_sha256=hashes,
     )

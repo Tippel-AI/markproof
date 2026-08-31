@@ -23,4 +23,10 @@ target:
       prompt: "Ein einfaches Testbild."
       response_format: url
 
+text_marking:
+  method: synthid
+  # The operator's generation-side parameters. In production these keys are a
+  # secret — anyone holding them can verify *and* forge the mark.
+  watermark_config: watermark_config.json
+
 rulepack: art50-eu-2026.07
