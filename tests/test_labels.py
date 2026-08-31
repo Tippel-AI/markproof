@@ -135,7 +135,11 @@ def _turn(prompt_id: str, text: str) -> Turn:
 def _evidence(*turns: Turn, lang: str = "de") -> Evidence:
     return Evidence(
         probe_id="images",
-        probe_kind=ProbeKind.MEDIA,
+        # UI, not MEDIA: these cases exercise label matching, and a media probe
+        # deliberately reports no perceivable text — its response body is an
+        # images API's bookkeeping, not something a person reads. A rendered
+        # interface is where an Article 50(4) label is actually perceived.
+        probe_kind=ProbeKind.UI,
         target_name="test-target",
         lang=lang,
         turns=turns,
@@ -560,3 +564,86 @@ class TestShippedRule:
         """The paragraph that makes a perceivable label a separate duty."""
         assert label_rule.guideline_ref is not None
         assert "117" in label_rule.guideline_ref
+
+
+class TestMediaProbesHaveNoPerceivableSurface:
+    """A warning that fires for every target carries no information.
+
+    MPF-L-001 used to warn on every media run, and the text it inspected was a
+    string markproof generated itself: the media probe records
+    ``"3 asset(s): images-0, images-1, images-2"`` as the turn's response so a
+    finding can name what it looked at. That summary is non-empty, so the
+    "nothing to read" branch never fired, and it can never match a label, so the
+    outcome was fixed before the check began.
+
+    The duty is real — Article 50(4) asks a deployer for a label a person can
+    perceive — but it attaches where the image is displayed, and an images API is
+    not that place. So this reports honestly that it saw no perceivable surface,
+    and the rule skips with that reason instead of warning about a page it never
+    looked at.
+    """
+
+    @staticmethod
+    def _media_evidence(text: str) -> Evidence:
+        return Evidence(
+            probe_id="images",
+            probe_kind=ProbeKind.MEDIA,
+            target_name="test-target",
+            lang="de",
+            turns=(_turn("media-generation", text),),
+        )
+
+    def test_the_probes_own_summary_is_not_treated_as_perceivable_text(
+        self, shipped_labels: LabelPatternSet
+    ) -> None:
+        result = check_labels(
+            self._media_evidence("2 asset(s): images-0, images-1"),
+            LabelPresenceCheck(
+                type="label-presence",
+                labels_file="labels.de-en.yaml",
+                category=LabelCategory.DEEPFAKE,
+            ),
+            shipped_labels,
+        )
+        assert result.outcome is LabelOutcome.NO_PERCEIVABLE_TEXT
+
+    def test_not_even_a_real_label_in_the_response_body_counts(
+        self, shipped_labels: LabelPatternSet
+    ) -> None:
+        """An images API's JSON is not where a person meets the content.
+
+        Accepting a label here would be worse than the false warning it replaces:
+        it would let an operator satisfy a perceivability duty by putting words in
+        a machine-readable payload no reader ever sees.
+        """
+        result = check_labels(
+            self._media_evidence("Dieses Bild wurde mit KI erzeugt."),
+            LabelPresenceCheck(
+                type="label-presence",
+                labels_file="labels.de-en.yaml",
+                category=LabelCategory.DEEPFAKE,
+            ),
+            shipped_labels,
+        )
+        assert result.outcome is LabelOutcome.NO_PERCEIVABLE_TEXT
+
+    def test_the_rule_skips_rather_than_warning(self, shipped_labels: LabelPatternSet) -> None:
+        """End to end through the engine, because the verdict is what a user sees."""
+        from pathlib import Path
+
+        from markproof.checks.disclosure import load_pattern_set
+        from markproof.rules.engine import Result, evaluate
+        from markproof.rules.schema import load_rulepack
+
+        pkg = Path(__file__).resolve().parent.parent / "src" / "markproof"
+        rulepack = load_rulepack(pkg / "rulepacks" / "art50-eu-2026.07.yaml")
+        findings = evaluate(
+            rulepack,
+            [self._media_evidence("1 asset(s): images-0")],
+            {"disclosure.de-en.yaml": load_pattern_set(pkg / "patterns" / "disclosure.de-en.yaml")},
+            None,
+            {"labels.de-en.yaml": shipped_labels},
+        )
+        label = next(f for f in findings if f.rule_id == "MPF-L-001")
+        assert label.result is Result.SKIP
+        assert "perceivable" in label.message

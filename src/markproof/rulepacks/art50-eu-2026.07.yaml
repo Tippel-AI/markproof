@@ -213,6 +213,12 @@ rules:
       contrast and duration (para 142, para 143), none of which appear in the
       text. A fail would claim a precision this check does not have; v0.1
       therefore reports presence and attaches the evidence.
+      Against a `media` probe the rule skips rather than warning, and says why: an
+      images endpoint returns an API payload, and the label this Article asks for
+      is perceived where the content is displayed. Inspecting the response body
+      would mean judging a string the probe itself composed, which produced the
+      same warning for every media target and told a reader nothing. The
+      obligation is checked by pointing a `ui` probe at the page.
     applies_to: [media, ui]
     check:
       type: label-presence

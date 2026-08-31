@@ -46,7 +46,12 @@ from ruamel.yaml import YAML
 
 from markproof.checks.disclosure import MatchHit, Pattern, PatternSet, normalise
 from markproof.probes.base import Evidence, Turn
-from markproof.rules.schema import LabelCategory, LabelPresenceCheck, LabelScope
+from markproof.rules.schema import (
+    LabelCategory,
+    LabelPresenceCheck,
+    LabelScope,
+    ProbeKind,
+)
 
 __all__ = [
     "LabelOutcome",
@@ -195,7 +200,7 @@ def check_labels(
     without_text: list[str] = []
 
     for turn in evidence.turns:
-        text = _perceivable_text(turn)
+        text = _perceivable_text(turn, evidence.probe_kind)
         if not text:
             # Not the same as "no label": there was nothing to read. Recorded
             # separately so a report can say which of the two it saw.
@@ -236,15 +241,29 @@ def check_labels(
     )
 
 
-def _perceivable_text(turn: Turn) -> str:
+def _perceivable_text(turn: Turn, probe_kind: ProbeKind) -> str:
     """The text a person exposed to this output would read, normalised.
 
-    Today that is the response body the probe recorded. Article 50(4) is about
-    what is perceivable at the place the content is displayed, so this is only a
-    faithful reading for probes that capture rendered output — which is the UI
-    probe, and is one of the reasons a rule built on this check warns rather than
-    fails. See ``docs/RULES_SOURCES.md`` §9.3.
+    Article 50(4) is about what is perceivable *where the content is displayed*,
+    so this is only a faithful reading for a probe that captures a rendered
+    surface. A media endpoint does not have one: its response body is an images
+    API's bookkeeping — ``{"data": [{"url": …}]}`` — and the probe records a
+    summary of it, ``"3 asset(s): images-0, images-1, images-2"``, so a finding
+    can name what it inspected.
+
+    That summary used to be handed to this function as if it were what a person
+    reads. It is non-empty, so the "nothing to read" branch never fired; it can
+    never match a label, so every media probe produced the same warning — on the
+    strength of a string markproof wrote itself. A warning that appears for every
+    target carries no information and teaches its reader to skip it.
+
+    So a media probe reports no perceivable text, and the rule skips with that
+    reason. The deployer-side duty in Article 50(4) is real for this content; it
+    attaches to the page where the image is shown, which is a UI probe's job.
+    See ``docs/RULES_SOURCES.md`` §9.3.
     """
+    if probe_kind is ProbeKind.MEDIA:
+        return ""
     return normalise(turn.response.content)
 
 
