@@ -5,9 +5,145 @@
 Every probe implements ``collect() -> Evidence``. Evidence is a serialisable
 record of what the endpoint returned, with a SHA-256 digest per stored artefact
 so that findings can reference immutable inputs.
+
+Probes gather, they never judge. Keeping collection and evaluation apart is what
+makes a run reproducible: the same evidence file re-evaluated later yields the
+same findings, without touching the network again.
 """
 
-# TODO(M1): Probe protocol (collect), Evidence / Artifact models,
-#           artefact storage layout under artifacts/.
-# TODO(M5): endpoint errors (timeout, TLS, 401/429/5xx) become the finding
-#           MPF-X-001 "endpoint unreachable" — a FAIL, never a crash.
+from __future__ import annotations
+
+import hashlib
+from enum import StrEnum
+from typing import Protocol, runtime_checkable
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from markproof.rules.schema import ProbeKind
+
+__all__ = [
+    "Artifact",
+    "Evidence",
+    "Message",
+    "Probe",
+    "ProbeError",
+    "Turn",
+    "sha256_hex",
+]
+
+
+def sha256_hex(data: bytes | str) -> str:
+    """Hex SHA-256 of the given payload; text is encoded as UTF-8."""
+    if isinstance(data, str):
+        data = data.encode("utf-8")
+    return hashlib.sha256(data).hexdigest()
+
+
+class ProbeError(RuntimeError):
+    """The endpoint could not be probed at all.
+
+    Raised for transport-level failures (DNS, TLS, timeout, non-JSON body).
+    The CLI turns this into an operational finding rather than a traceback:
+    an unreachable endpoint is a result, not a crash.
+    """
+
+
+class Role(StrEnum):
+    """Who produced a message."""
+
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+
+
+class Message(BaseModel):
+    """One message in a probed conversation."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    role: Role
+    content: str
+
+
+class Artifact(BaseModel):
+    """A stored byte payload referenced by a finding.
+
+    Only the digest and metadata live in the evidence file; the bytes go to the
+    artefacts directory. That keeps evidence diffable while still pinning every
+    referenced input.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str
+    media_type: str
+    size_bytes: int = Field(ge=0)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_url: str | None = None
+
+
+class Turn(BaseModel):
+    """A single request/response exchange with the target.
+
+    ``prompt_id`` links back to the prompt set entry that triggered it, so a
+    finding can say *which* question exposed the problem.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    prompt_id: str
+    request: list[Message]
+    response: Message
+    response_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    status_code: int
+    artifacts: tuple[Artifact, ...] = ()
+
+    @property
+    def is_first(self) -> bool:
+        """True when no user message preceded the response.
+
+        Relevant for ``position: before_first_user_message`` — a disclosure that
+        only appears after the user has spoken is late.
+        """
+        return not any(m.role is Role.USER for m in self.request)
+
+
+class Evidence(BaseModel):
+    """Everything one probe observed, ready to be evaluated or stored."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    probe_id: str
+    probe_kind: ProbeKind
+    target_name: str
+    lang: str = Field(pattern=r"^[a-z]{2}$")
+    turns: tuple[Turn, ...]
+
+    @property
+    def first_turn(self) -> Turn | None:
+        """The opening exchange, or None if the probe collected nothing."""
+        return self.turns[0] if self.turns else None
+
+    def turn_by_prompt(self, prompt_id: str) -> Turn | None:
+        """Look up a turn by the prompt that produced it."""
+        for turn in self.turns:
+            if turn.prompt_id == prompt_id:
+                return turn
+        return None
+
+
+@runtime_checkable
+class Probe(Protocol):
+    """What every probe implementation provides."""
+
+    probe_id: str
+    probe_kind: ProbeKind
+
+    def collect(self) -> Evidence:
+        """Gather evidence from the target.
+
+        Raises:
+            ProbeError: if the target could not be reached or spoke a protocol
+                the probe does not understand.
+        """
+        ...

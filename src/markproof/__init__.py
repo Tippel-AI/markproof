@@ -22,5 +22,12 @@ It is not a universal AI detector, and it is not legal advice.
 See ``docs/DISCLAIMER.md``.
 """
 
-# TODO(M0): expose __version__ via importlib.metadata("markproof").
-# TODO(M1): re-export the stable public API surface once it exists.
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
+
+try:
+    __version__ = _pkg_version("markproof")
+except PackageNotFoundError:  # running from a source tree without an install
+    __version__ = "0.0.0+unknown"
+
+__all__ = ["__version__"]

@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
+# SPDX-License-Identifier: Apache-2.0
+#
+# Points markproof at the local demo-bot. Start the bot first:
+#   DEMO_MODE=fail uvicorn app:app --port 8099
+version: 1
+
+target:
+  name: demo-bot
+  probes:
+    - id: chat
+      type: http-chat
+      url: http://127.0.0.1:8099/v1/chat/completions
+      dialect: openai-chat
+      lang: de
+      model: demo
+
+rulepack: art50-eu-2026.07
