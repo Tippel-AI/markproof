@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from markproof.checks.disclosure import DisclosureOutcome, PatternSet, check_disclosure
 from markproof.rules.schema import (
     DisclosurePatternCheck,
+    Obligation,
     Position,
     ProbeKind,
     Rule,
@@ -102,6 +103,7 @@ class TestPositionGuard:
                 id="MPF-D-002",
                 title="unprompted disclosure",
                 article="Art. 50(1)",
+                obligation=Obligation.AI_INTERACTION,
                 applies_to=[ProbeKind.HTTP_CHAT],
                 check=_check(position=Position.BEFORE_FIRST_USER_MESSAGE),
                 severity=Severity.FAIL,
@@ -113,6 +115,7 @@ class TestPositionGuard:
             id="MPF-D-002",
             title="unprompted disclosure",
             article="Art. 50(1)",
+            obligation=Obligation.AI_INTERACTION,
             applies_to=[ProbeKind.UI],
             check=_check(position=Position.BEFORE_FIRST_USER_MESSAGE),
             severity=Severity.WARN,
@@ -124,6 +127,7 @@ class TestPositionGuard:
             id="MPF-D-001",
             title="disclosure in first response",
             article="Art. 50(1)",
+            obligation=Obligation.AI_INTERACTION,
             applies_to=[ProbeKind.HTTP_CHAT],
             check=_check(position=Position.ANYWHERE_IN_FIRST_RESPONSE),
             severity=Severity.FAIL,

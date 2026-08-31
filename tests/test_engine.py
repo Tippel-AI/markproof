@@ -17,7 +17,7 @@ from markproof.rules.engine import (
     evaluate,
     exit_code_for,
 )
-from markproof.rules.schema import ProbeKind, Rule, Rulepack, Severity
+from markproof.rules.schema import Obligation, ProbeKind, Rule, Rulepack, Severity
 from tests.helpers import make_evidence, make_turn
 
 
@@ -142,6 +142,7 @@ class TestFailureModes:
             id="MPF-M-001",
             title="future check",
             article="Art. 50(2)",
+            obligation=Obligation.SYNTHETIC_MEDIA_MARKING,
             guideline_ref=None,
             rationale=None,
             applies_to=[ProbeKind.HTTP_CHAT],

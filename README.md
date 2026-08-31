@@ -42,9 +42,30 @@ There is also a paperwork problem. Even a team doing everything right cannot cur
 | `MPF-D-002` | Does the interface disclose **before** the user types anything? | UI | Art. 50(1) |
 | `MPF-D-003` | Is a direct question ("are you human?") answered truthfully? | chat | Art. 50(1) |
 | `MPF-M-001` | Do delivered media carry a valid C2PA manifest declaring an AI source type? | media | Art. 50(2) |
-| `MPF-T-001` | Is the text output provably watermarked, against *your* config? | chat | Art. 50(2) |
+| `MPF-T-001` | Is the text provably watermarked, against *your* config? | chat, page | Art. 50(2) |
 | `MPF-L-001` | Is a deepfake label present? (warns — presence only, not prominence) | media, UI | Art. 50(4) |
 | `MPF-X-001` | Recorded when a probe could not run at all — never a silent pass. | any | — |
+
+Every rule names the obligation it serves, and **you say which obligations bind you**:
+
+```yaml
+applicability:
+  ai-interaction: false        # no chatbot — Art. 50(1) does not arise
+  deepfake-labelling: false    # no deep fakes generated
+  synthetic-text-marking: true # the page copy is model-written
+```
+
+Rules for an obligation you declare away are skipped and *named* as skipped, not
+quietly dropped. Without this block everything runs, so silence never removes a
+check.
+
+This is not a mute switch, and the difference is the point. Declaring an
+obligation inapplicable puts a claim into the **signed** report: a green run that
+skipped the deep fake rule now says, over your own key, that you declared no deep
+fakes. And the claim binds you the other way too — declare an obligation
+applicable and give markproof nothing to check it with, and you get a warning
+instead of a silent skip. "We mark our text", "nothing was checked" and a green
+build is exactly the failure this tool exists to remove.
 
 **No LLM sits in the evaluation path.** Same inputs, same verdict, every time. Where determinism ends — for instance, whether a disclosure is worded "clearly and distinguishably" — markproof emits `WARN` with the guideline citation, never a guessed `PASS`. A compliance tool that estimates just moves the problem somewhere you can't see it.
 
@@ -64,6 +85,12 @@ target:
       type: media
       url: https://api.example.com/v1/images/generations
       response_format: url          # or b64_json
+    - id: article
+      type: ui
+      url: https://example.com/blog/latest
+      content_selector: "article .body"   # the model-written text, nothing else
+applicability:
+  deepfake-labelling: false       # this target generates no deep fakes
 text_marking:
   method: synthid
   watermark_config: secrets/watermark_config.json   # never commit this
@@ -81,10 +108,13 @@ $ markproof run --config markproof.yaml
   Rule       Result  Probe   Detail
   MPF-D-001  PASS    chat    disclosure found (1 pattern matched: en-08-talking-to-ai)
   MPF-D-003  PASS    chat    disclosure found (2 patterns matched: …)
+  MPF-L-001  SKIP    article not applicable — the target declares no
+                     deepfake-labelling obligation (Art. 50(4))
   MPF-M-001  FAIL    images  1 of 1 asset(s) failed: no C2PA manifest embedded
   MPF-T-001  PASS    chat    watermark detected (mean g 0.7498, 521 tokens)
 
-  3 pass · 1 fail
+  3 pass · 1 fail · 1 skipped
+  declared out of scope: deepfake-labelling
 
   report written to markproof-report/report.json
   exit 1
@@ -133,6 +163,14 @@ markproof is not the only tool in this space, and for several jobs it isn't the 
   (Art. 50(3)) is not checked: deciding whether a system performs emotion
   recognition at all is out of reach for a probe that only sees its output.
   Label *prominence* is not judged either — only whether the wording is there.
+- **Not a judge of whether an obligation applies to you.** `applicability` records
+  *your* answer; it does not compute one. Whether Article 50 binds a given system,
+  and as provider or as deployer, is a legal question this tool has no view on.
+- **Not a marking convention for web pages.** There is no established
+  machine-readable standard for marking generated *text* in an HTML document the
+  way C2PA marks media. markproof will not invent a `<meta>` tag of its own and
+  call the result conformance. On a rendered page it checks one thing: whether
+  the region you name still carries the watermark you configured.
 
 ## Regulatory context
 

@@ -73,6 +73,21 @@ than none:
   not part of v1; v1 validates manifest presence, hash bindings and the required
   assertions. Deepfake and emotion labels are checked for presence, not for
   prominence.
+- **Applicability is recorded, not decided.** The `applicability` block in
+  `markproof.yaml` is the operator's own statement about which Article 50
+  obligations bind the target. markproof writes it into the report and skips the
+  rules it excludes; it does not verify the claim and has no view on whether it
+  is right. Whether Article 50 applies to a given system, and whether the
+  operator is provider or deployer for the purposes of a given paragraph, is a
+  legal question. A report whose scope was declared too narrowly is a document
+  about a narrow test, not a defence.
+- **Text marking on a web page is checked in one place only.** For a rendered
+  document markproof scores the region named by `content_selector` against the
+  operator's watermark configuration, and nothing else. It does not look for a
+  machine-readable marking convention in the HTML, because for generated *text*
+  in a web document there is no established one to look for — unlike C2PA for
+  media. Inventing a tag and reporting its absence as non-conformance would
+  manufacture a standard rather than test against one.
 
 ## Warranty
 

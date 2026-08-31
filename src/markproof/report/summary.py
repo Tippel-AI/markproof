@@ -52,6 +52,45 @@ def _verdict_line(report: Report) -> str:
     return f"**All {summary.passed} applicable checks passed.**"
 
 
+def _join(names: list[str]) -> str:
+    """Backtick the names and join them so the sentence reads as English."""
+    quoted = [f"`{n}`" for n in names]
+    if len(quoted) <= 1:
+        return "".join(quoted)
+    return f"{', '.join(quoted[:-1])} or {quoted[-1]}"
+
+
+def _scope_block(report: Report) -> list[str]:
+    """What the operator declared out of scope, and what they claimed applies.
+
+    Printed next to the verdict rather than in a footnote. A reader deciding how
+    much a green run is worth needs the scope in the same glance as the result —
+    put it at the bottom and the number above it reads as broader than it is.
+    """
+    declared = report.applicability
+    if not declared:
+        return []
+
+    out = sorted(k for k, v in declared.items() if not v)
+    inside = sorted(k for k, v in declared.items() if v)
+
+    sentences: list[str] = []
+    if out:
+        sentences.append(
+            f"The target declares no {_join(out)} "
+            f"obligation{'s' if len(out) > 1 else ''}, so the rules serving "
+            f"{'them' if len(out) > 1 else 'it'} were skipped rather than measured."
+        )
+    if inside:
+        sentences.append(
+            f"It declares that {_join(inside)} {'apply' if len(inside) > 1 else 'applies'}."
+        )
+    sentences.append(
+        "This is the operator's own statement, recorded here and covered by the signature."
+    )
+    return [f"**Declared scope.** {' '.join(sentences)}", ""]
+
+
 def _findings_table(findings: list[Finding]) -> list[str]:
     lines = [
         "| | Rule | Probe | Result |",
@@ -104,6 +143,7 @@ def render_summary(report: Report) -> str:
         f"{summary.warned} warned · {summary.skipped} skipped",
         "",
     ]
+    lines.extend(_scope_block(report))
 
     if report.findings:
         lines.extend(_findings_table(report.findings))

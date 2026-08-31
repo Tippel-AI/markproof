@@ -19,16 +19,18 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator
 from ruamel.yaml import YAML
 
 __all__ = [
+    "Applicability",
     "C2paVerifyCheck",
     "Check",
     "DisclosurePatternCheck",
     "LabelCategory",
     "LabelPresenceCheck",
     "LabelScope",
+    "Obligation",
     "ProbeKind",
     "Rule",
     "Rulepack",
@@ -66,6 +68,80 @@ class ProbeKind(StrEnum):
     HTTP_CHAT = "http-chat"
     UI = "ui"
     MEDIA = "media"
+
+
+class Obligation(StrEnum):
+    """Which Article 50 duty a rule serves.
+
+    Finer-grained than the Article number, and deliberately so: Art. 50(2)
+    covers image, audio, video *and* text, and an operator who generates page
+    copy but no images has to be able to say which half binds them. A taxonomy
+    that stopped at "50(2)" would force them to accept media findings they have
+    no media for, which is how a tool teaches people to ignore it.
+
+    A rule names exactly one. Where a duty has two limbs that attach to
+    different parties or facts — Art. 50(4) asks deployers for a deep fake label
+    in its first subparagraph and for a disclosure on public-interest text in
+    its second — they are separate members, because a target can be subject to
+    one and not the other.
+    """
+
+    AI_INTERACTION = "ai-interaction"
+    """Art. 50(1) — systems interacting directly with natural persons."""
+
+    SYNTHETIC_MEDIA_MARKING = "synthetic-media-marking"
+    """Art. 50(2) — machine-readable marking of generated image, audio, video."""
+
+    SYNTHETIC_TEXT_MARKING = "synthetic-text-marking"
+    """Art. 50(2) — machine-readable marking of generated text."""
+
+    EMOTION_RECOGNITION = "emotion-recognition"
+    """Art. 50(3) — informing persons exposed to emotion recognition or
+    biometric categorisation."""
+
+    DEEPFAKE_LABELLING = "deepfake-labelling"
+    """Art. 50(4) first subparagraph — perceivable label on deep fake content."""
+
+    PUBLIC_INTEREST_TEXT = "public-interest-text"
+    """Art. 50(4) second subparagraph — disclosure for published text informing
+    on matters of public interest."""
+
+
+class Applicability(RootModel[dict[Obligation, bool]]):
+    """The operator's declaration of which obligations bind this target.
+
+    Three states per obligation, not two. *Declared applicable* and *declared
+    not applicable* are both statements someone made and signed for; *undeclared*
+    is the absence of one, and it must not be silently read as either. So the
+    default keeps every rule running: an operator who says nothing gets exactly
+    the behaviour they got before this field existed, and nobody is quietly
+    opted out of a check by omission.
+
+    The declaration travels into the signed report, which is what separates this
+    from a list of rules to switch off. Switching a rule off hides a finding.
+    Declaring an obligation inapplicable puts a claim on the record: a report
+    that skipped the deep fake rule states, over the operator's own signature,
+    that they declared no deep fakes. The scope of the test stops being an
+    assumption the reader has to make.
+    """
+
+    root: dict[Obligation, bool] = {}
+
+    def applies(self, obligation: Obligation) -> bool:
+        """Whether a rule for this obligation should be evaluated.
+
+        Only an explicit ``false`` stops it. Silence means yes.
+        """
+        return self.root.get(obligation, True)
+
+    def is_declared_applicable(self, obligation: Obligation) -> bool:
+        """Whether the operator explicitly claimed this obligation binds them.
+
+        Distinct from :meth:`applies`, which is also true for silence. The
+        difference is what lets a missing configuration be read as a hole in a
+        claim rather than as an obligation nobody ever had.
+        """
+        return self.root.get(obligation, False) is True
 
 
 class Position(StrEnum):
@@ -311,6 +387,17 @@ class Rule(BaseModel):
     id: str
     title: str = Field(min_length=1)
     article: str = Field(min_length=1)
+
+    obligation: Obligation
+    """The duty this rule serves. Required, with no default.
+
+    A default would have to be a guess about which obligation an unspecified
+    rule serves, and that guess decides whether the rule runs against a target
+    that declared the duty inapplicable. There is no safe value: too broad and
+    the rule fires where it does not belong, too narrow and it goes silent where
+    it does. A rulepack author knows the answer; the schema asks for it.
+    """
+
     guideline_ref: str | None = None
     rationale: str | None = None
     applies_to: list[ProbeKind] = Field(min_length=1)

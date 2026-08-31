@@ -55,6 +55,7 @@ from typing import Any
 from markproof.config import UiProbeConfig
 from markproof.probes.base import (
     Artifact,
+    ContentScope,
     Evidence,
     Message,
     ProbeError,
@@ -142,7 +143,9 @@ class UiProbe:
         Returns:
             Evidence holding exactly one turn: an unprompted response with an
             empty request list, the visible text as its content, and a PNG
-            screenshot attached as an artefact.
+            screenshot attached as an artefact. When ``content_selector`` names
+            a generated region, its text is recorded alongside as a
+            ``content_scope`` — the same observation, read more narrowly.
 
         Raises:
             ProbeError: for every failure — a missing extra, a browser that will
@@ -157,7 +160,7 @@ class UiProbe:
             with api.sync_playwright() as playwright:
                 browser = self._launch(playwright)
                 try:
-                    turn = self._observe(browser)
+                    turn, content_scope = self._observe(browser)
                 finally:
                     browser.close()
         except ProbeError:
@@ -174,6 +177,7 @@ class UiProbe:
             target_name=self.config.id,
             lang=self.config.lang,
             turns=(turn,),
+            content_scope=content_scope,
         )
 
     def _launch(self, playwright: Any) -> Any:
@@ -183,7 +187,7 @@ class UiProbe:
         except Exception as exc:
             raise ProbeError(f"Chromium could not be started — {_INSTALL_HINT}\n({exc})") from exc
 
-    def _observe(self, browser: Any) -> Turn:
+    def _observe(self, browser: Any) -> tuple[Turn, ContentScope | None]:
         """Load the page, freeze it, and record text plus screenshot."""
         timeout_ms = self.config.timeout_seconds * 1000
         context = browser.new_context(
@@ -203,6 +207,7 @@ class UiProbe:
             self._wait(page, timeout_ms)
 
             text = self._visible_text(page)
+            content = self._content_text(page)
             screenshot = page.screenshot(
                 type="png", animations="disabled", caret="hide", scale="css"
             )
@@ -216,7 +221,10 @@ class UiProbe:
             source_url=self.config.url,
         )
 
-        return Turn(
+        selector = self.config.content_selector
+        scope = ContentScope.of(content, selector=selector) if selector is not None else None
+
+        turn = Turn(
             prompt_id=self.config.prompt_id,
             # The empty list is the whole point of this probe: nothing was said
             # to the interface, so whatever it showed, it showed unprompted.
@@ -226,6 +234,7 @@ class UiProbe:
             status_code=status,
             artifacts=(artifact,),
         )
+        return turn, scope
 
     def _navigate(self, page: Any) -> int:
         """Go to the target and report the HTTP status it answered with."""
@@ -278,27 +287,49 @@ class UiProbe:
         selector = self.config.chat_selector
         if selector is None:
             return str(page.locator("body").inner_text()).strip()
+        return self._text_of(page, selector, field="chat_selector")
 
+    def _content_text(self, page: Any) -> str:
+        """The generated region's text, or the empty string if none is configured.
+
+        Scoped separately from the widget text on purpose — see
+        ``UiProbeConfig.content_selector`` for why one selector cannot serve
+        both the disclosure search and the watermark score.
+        """
+        selector = self.config.content_selector
+        if selector is None:
+            return ""
+        return self._text_of(page, selector, field="content_selector")
+
+    def _text_of(self, page: Any, selector: str, *, field: str) -> str:
+        """Rendered text of the first element matching ``selector``.
+
+        A selector that matches nothing, or matches something invisible, ends
+        the probe. It is tempting to shrug and carry on with less evidence, but
+        a stale selector after a frontend refactor is exactly the regression
+        this tool is for, and a run that quietly checked an empty string would
+        report it as compliance.
+        """
         locator = page.locator(selector)
         try:
             count = int(locator.count())
         except Exception as exc:
-            raise ProbeError(f"chat_selector {selector!r} is not a usable selector: {exc}") from exc
+            raise ProbeError(f"{field} {selector!r} is not a usable selector: {exc}") from exc
 
         if count == 0:
             raise ProbeError(
-                f"{self.config.url}: chat_selector {selector!r} matched no element — "
-                "the widget did not render, or the selector is stale. Use 'wait_for' if "
+                f"{self.config.url}: {field} {selector!r} matched no element — "
+                "the element did not render, or the selector is stale. Use 'wait_for' if "
                 "the interface mounts asynchronously."
             )
 
         first = locator.first
         if not first.is_visible():
             raise ProbeError(
-                f"{self.config.url}: chat_selector {selector!r} matched an element that is "
+                f"{self.config.url}: {field} {selector!r} matched an element that is "
                 "not visible — nothing a user can read is inside it. If the widget opens "
-                "from a launcher, point chat_selector at the container that is rendered on "
-                "load, or capture the whole page by leaving it unset."
+                "from a launcher, point it at the container that is rendered on load, or "
+                "capture the whole page by leaving it unset."
             )
 
         # ``.first`` and nothing else: several matches mean the selector is

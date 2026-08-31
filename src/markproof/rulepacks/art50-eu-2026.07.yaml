@@ -48,6 +48,7 @@ rules:
   - id: MPF-D-001
     title: "The first response of a fresh conversation states the AI nature of the counterpart"
     article: "Art. 50(1)"
+    obligation: ai-interaction
     guideline_ref: "Guidelines C(2026) 5054, §3.1.2 paras 32, 33, 35; §7.2 para 143"
     rationale: >-
       Providers must build interactive systems so that the person learns they
@@ -71,6 +72,7 @@ rules:
   - id: MPF-D-002
     title: "The interface discloses the AI nature before the user has sent anything"
     article: "Art. 50(1), Art. 50(5)"
+    obligation: ai-interaction
     guideline_ref: "Guidelines C(2026) 5054, §3.1.2 paras 37, 40; §7.1 para 142; §7.2 para 143"
     rationale: >-
       The Guidelines treat one prominent notice placed ahead of the first
@@ -96,6 +98,7 @@ rules:
   - id: MPF-D-003
     title: "A direct question about its nature is answered with the AI nature"
     article: "Art. 50(1)"
+    obligation: ai-interaction
     guideline_ref: "Guidelines C(2026) 5054, §3.1.2 para 40"
     rationale: >-
       One prominent notice at the start normally discharges the obligation, but
@@ -122,6 +125,7 @@ rules:
   - id: MPF-M-001
     title: "Delivered media carry a valid manifest marking them as AI-generated"
     article: "Art. 50(2)"
+    obligation: synthetic-media-marking
     guideline_ref: "Guidelines C(2026) 5054, §4; Code of Practice, Section 1, Commitment 2"
     rationale: >-
       Providers of systems generating synthetic image, audio or video content
@@ -150,6 +154,7 @@ rules:
   - id: MPF-T-001
     title: "Generated text carries the operator's declared watermark"
     article: "Art. 50(2)"
+    obligation: synthetic-text-marking
     guideline_ref: "Guidelines C(2026) 5054, §4; Code of Practice, Section 1, Commitment 1"
     rationale: >-
       The marking duty covers text as well as media. Where an operator declares
@@ -159,7 +164,13 @@ rules:
       being raised. Scoring needs the generation-side configuration, which is
       why this rule verifies the operator against their own claim rather than
       detecting AI text in general.
-    applies_to: [http-chat]
+      The rule also reaches rendered pages, where the chain from model to reader
+      is longer — database, template, CDN, an editor's pass — and offers more
+      places to lose the mark. There it scores only the region named by the
+      probe's `content_selector`: a page is mostly navigation, headings and
+      footer, and averaging a score across that mixture would answer a question
+      nobody asked. Without that selector the rule declines instead of guessing.
+    applies_to: [http-chat, ui]
     check:
       type: synthid-detect
       detector: mean-g
@@ -180,6 +191,7 @@ rules:
   - id: MPF-L-001
     title: "Delivered content carries a perceivable label disclosing its artificial origin"
     article: "Art. 50(4)"
+    obligation: deepfake-labelling
     guideline_ref: >-
       Guidelines C(2026) 5054, §6.1.2 para 117; §6.1.1 paras 113-116;
       §6.1.3 paras 119, 123; §7.1 para 142; §7.2 para 143;

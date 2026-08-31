@@ -60,7 +60,7 @@ from markproof.rules.engine import (
     exit_code_for,
     probe_failure_finding,
 )
-from markproof.rules.schema import Rulepack, load_rulepack
+from markproof.rules.schema import Applicability, Rulepack, load_rulepack
 
 __all__ = ["app"]
 
@@ -198,6 +198,7 @@ def _write_report(
     rulepack: Rulepack,
     findings: list[Finding],
     timestamp: str | None,
+    applicability: Applicability,
 ) -> None:
     """Write report.json and summary.md, signing when a key is configured.
 
@@ -205,7 +206,13 @@ def _write_report(
     a useful report — it is just not evidence someone else can check — so a
     missing key is a note, not an error.
     """
-    report = build_report(target=target, rulepack=rulepack, findings=findings, timestamp=timestamp)
+    report = build_report(
+        target=target,
+        rulepack=rulepack,
+        findings=findings,
+        timestamp=timestamp,
+        applicability=applicability,
+    )
 
     key_source = os.environ.get("MARKPROOF_SIGNING_KEY", "").strip()
     if key_source:
@@ -263,6 +270,18 @@ def _render(findings: list[Finding], target_name: str, rulepack: Rulepack) -> No
     counts = {r: sum(1 for f in findings if f.result is r) for r in Result}
     parts = [f"[{_RESULT_STYLE[r]}]{counts[r]} {r.value.lower()}[/]" for r in Result if counts[r]]
     console.print("  " + " · ".join(parts) if parts else "  no findings")
+
+    out_of_scope = sorted(
+        {
+            f.obligation.value
+            for f in findings
+            if f.obligation is not None and f.detail.get("outcome") == "not_applicable"
+        }
+    )
+    if out_of_scope:
+        # Named on the console, not just in the report file: whoever is watching
+        # the run has to see what their own configuration removed from it.
+        console.print(f"  [dim]declared out of scope: {', '.join(out_of_scope)}[/dim]")
     console.print()
 
 
@@ -307,7 +326,8 @@ def run(
         raise typer.Exit(code=2) from exc
 
     findings = sorted(
-        evaluate(rulepack, evidences, pattern_sets, watermark, label_sets) + probe_failures,
+        evaluate(rulepack, evidences, pattern_sets, watermark, label_sets, config.applicability)
+        + probe_failures,
         key=lambda f: (f.rule_id, f.probe_id),
     )
     _render(findings, config.target.name, rulepack)
@@ -318,7 +338,9 @@ def run(
         console.print(f"  findings written to [cyan]{json_out}[/cyan]")
 
     if report_dir is not None:
-        _write_report(report_dir, config.target.name, rulepack, findings, timestamp)
+        _write_report(
+            report_dir, config.target.name, rulepack, findings, timestamp, config.applicability
+        )
 
     raise typer.Exit(code=exit_code_for(findings))
 
@@ -337,6 +359,7 @@ def rules_list(
     table = Table(box=None, pad_edge=False, show_edge=False)
     table.add_column("Rule", style="bold")
     table.add_column("Article")
+    table.add_column("Obligation")
     table.add_column("Applies to", style="dim")
     table.add_column("Sev")
     table.add_column("Title", overflow="fold")
@@ -345,6 +368,7 @@ def rules_list(
         table.add_row(
             rule.id,
             rule.article,
+            rule.obligation.value,
             ", ".join(k.value for k in rule.applies_to),
             rule.severity.value,
             rule.title,

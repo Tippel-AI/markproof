@@ -20,9 +20,10 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from ruamel.yaml import YAML
 
-from markproof.rules.schema import ProbeKind
+from markproof.rules.schema import Applicability, ProbeKind
 
 __all__ = [
+    "Applicability",
     "AuthConfig",
     "ConfigError",
     "HttpChatProbeConfig",
@@ -159,6 +160,22 @@ class UiProbeConfig(BaseModel):
     page be the evidence.
     """
 
+    content_selector: str | None = None
+    """CSS selector for the model-generated text, for the text-marking check.
+
+    Separate from ``chat_selector`` because the two want opposite things. The
+    disclosure check wants a *wide* scope — a notice anywhere the reader can see
+    it counts — while a watermark score is only meaningful over text the model
+    actually wrote. A rendered page is mostly not generated: navigation,
+    headings, footer, cookie banner. Averaging a mean-g score across that
+    mixture lands in the uncertain band by construction, so pointing one
+    selector at both jobs would produce a confident-looking number about nothing.
+
+    Left unset, text marking is not checked on this probe and says so. There is
+    no sensible default: only the operator knows which element holds their
+    generated copy.
+    """
+
     wait_for: str | int | None = None
     """A CSS selector to wait for, or a number of milliseconds to sit still.
 
@@ -193,6 +210,16 @@ class UiProbeConfig(BaseModel):
     def _supported_lang(cls, v: str) -> str:
         if v not in SUPPORTED_LANGS:
             raise ValueError(f"lang {v!r} is not supported (have: {', '.join(SUPPORTED_LANGS)})")
+        return v
+
+    @field_validator("chat_selector", "content_selector")
+    @classmethod
+    def _selector_is_not_blank(cls, v: str | None) -> str | None:
+        # An empty string is not "the whole document" — it is a selector that
+        # matches nothing, and letting it through would turn a typo into a
+        # silently empty scope.
+        if v is not None and not v.strip():
+            raise ValueError("a selector must not be blank; omit the field instead")
         return v
 
     @field_validator("wait_for", mode="before")
@@ -323,6 +350,16 @@ class MarkproofConfig(BaseModel):
     version: Literal[1]
     target: TargetConfig
     rulepack: str = Field(min_length=1)
+
+    applicability: Applicability = Field(default_factory=Applicability)
+    """Which Article 50 obligations the operator declares to bind this target.
+
+    Omitting it checks everything the rulepack offers, which is the right
+    default for a tool nobody has told anything yet. Declaring an obligation
+    inapplicable is a claim, not a mute switch: it is recorded in the signed
+    report, so the scope of a green run is stated rather than assumed.
+    """
+
     text_marking: TextMarkingConfig | None = None
     report: ReportConfig = Field(default_factory=ReportConfig)
 
