@@ -62,7 +62,7 @@ class TestVerdicts:
         evidence = make_evidence(make_turn("opener", "Guten Tag, ich bin Ihr Assistent."))
         findings = evaluate(rulepack, [evidence], patterns)
         assert findings[0].result is Result.WARN
-        assert "near_miss" in findings[0].detail["outcome"]
+        assert findings[0].detail["outcome"] == "near_miss"
 
     def test_findings_carry_the_evidence_hash(
         self, rulepack: Rulepack, patterns: dict[str, PatternSet]

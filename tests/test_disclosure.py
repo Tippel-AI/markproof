@@ -8,12 +8,11 @@ import pytest
 
 from markproof.checks.disclosure import (
     DisclosureOutcome,
-    DisclosurePatternCheck,
     PatternSet,
     check_disclosure,
     normalise,
 )
-from markproof.rules.schema import Position
+from markproof.rules.schema import DisclosurePatternCheck, Position
 from tests.helpers import make_evidence, make_turn
 
 

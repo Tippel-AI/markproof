@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from markproof.checks.disclosure import PatternSet, load_pattern_set
+from markproof.probes.base import Evidence
 from markproof.rules.engine import Result, evaluate, exit_code_for
 from markproof.rules.schema import Rulepack, load_rulepack
 from tests.helpers import make_evidence, make_turn
@@ -47,7 +48,7 @@ def shipped_patterns() -> dict[str, PatternSet]:
     return {"disclosure.de-en.yaml": load_pattern_set(_PKG / "patterns" / "disclosure.de-en.yaml")}
 
 
-def _evidence_from(replies: dict[str, str]):
+def _evidence_from(replies: dict[str, str]) -> Evidence:
     return make_evidence(*(make_turn(pid, text) for pid, text in replies.items()))
 
 
