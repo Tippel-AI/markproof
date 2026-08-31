@@ -125,6 +125,11 @@ def render_summary(report: Report) -> str:
             "third party can verify."
         )
 
+    attribution = report.rulepack.get("attribution")
+    if attribution:
+        # The findings quote the guidelines; the credit line goes with them.
+        lines.extend(["", f"_{attribution}_"])
+
     lines.extend(
         [
             "",

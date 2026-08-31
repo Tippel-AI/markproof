@@ -1,0 +1,368 @@
+# SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
+# SPDX-License-Identifier: Apache-2.0
+#
+# Release: a `v*` tag becomes a PyPI release and a GitHub release.
+#
+# The order of the jobs is the whole design. Everything that can still be undone
+# runs first — the tag/version guard, lint, types, the test matrix, the build,
+# and a smoke install of the wheel that was actually built. Only then does the
+# irreversible step happen. A version number on PyPI can be yanked but never
+# re-uploaded, so the last moment to stop is *before* `pypi-publish`, not after.
+#
+# Publishing uses PyPI Trusted Publishing (OIDC). There is no API token in this
+# repository and no secret to leak. The trust lives on pypi.org and is bound to
+# four values that must match exactly:
+#
+#   repository owner   Tippel-AI
+#   repository name    markproof
+#   workflow filename  release.yml     <- THIS FILE. Renaming it breaks publishing
+#                                         until the publisher on PyPI is updated.
+#   environment name   pypi            <- must also exist under Settings ->
+#                                         Environments in this repository.
+#
+# docs/RELEASING.md explains the one-time setup on pypi.org, which no automation
+# can do on the maintainer's behalf.
+#
+# Pinned action versions, verified against the upstream tag lists on 2026-08-31:
+#   actions/checkout             v7.0.1   (major tag v7 exists)
+#   actions/setup-python         v7.0.0   (major tag v7 exists)
+#   actions/upload-artifact      v7.0.1   (major tag v7 exists)
+#   actions/download-artifact    v8.0.1   (major tag v8 exists; both sides speak
+#                                          artifact API v4, so v7 upload and v8
+#                                          download are compatible)
+#   astral-sh/setup-uv           v10.0.1  (NO v10 major tag — only exact versions;
+#                                          the same lesson ci.yml already learned)
+#   pypa/gh-action-pypi-publish  v1.14.2  (upstream documents the moving
+#                                          `@release/v1` branch; pinning the exact
+#                                          tag is deliberate — bump it on purpose,
+#                                          not on someone else's schedule)
+#
+# No step interpolates a ref name, a version or any other context value into a
+# `run:` body. Values reach the scripts as environment variables only — the same
+# rule action/action.yml follows.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  # Dry run. Builds, checks and smoke-installs everything and publishes nothing:
+  # the `if:` guards on the two publishing jobs make that a property of the
+  # workflow rather than something to remember.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Deliberately not cancel-in-progress. A release killed between the PyPI upload
+  # and the GitHub release leaves the two out of step, and only one of them can
+  # be repeated.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: tag and version agree
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@v7.0.1
+
+      # Pinned rather than left to whatever the runner image ships, because the
+      # guard reads pyproject.toml with tomllib, which only exists from 3.11.
+      - name: Set up Python
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Compare the tag with pyproject.toml, take the changelog section
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+          import sys
+          import tomllib
+
+          ref_type = os.environ["REF_TYPE"]
+          ref_name = os.environ["REF_NAME"]
+          is_tag = ref_type == "tag"
+
+          pyproject = tomllib.loads(
+              pathlib.Path("pyproject.toml").read_text(encoding="utf-8")
+          )
+          version = pyproject["project"]["version"]
+
+          errors = []
+
+          # 1. The tag and the packaged version have to be the same release.
+          #    A v0.1.0 tag sitting on a 0.2.0 tree is a mistake, not a release:
+          #    whatever it published would carry a number nobody tagged.
+          if is_tag:
+              if not ref_name.startswith("v"):
+                  errors.append(f"tag {ref_name!r} does not start with 'v'")
+              elif ref_name[1:] != version:
+                  errors.append(
+                      f"tag {ref_name!r} announces version {ref_name[1:]!r}, but "
+                      f"pyproject.toml says {version!r}. Bump the version and "
+                      f"re-tag, or delete the tag — see docs/RELEASING.md."
+                  )
+          else:
+              print(
+                  f"::notice title=dry run::{ref_type} {ref_name}, not a tag — "
+                  f"building {version} and publishing nothing"
+              )
+
+          # 2. The changelog section IS the release notes. No entry, no release.
+          changelog = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          section = re.compile(
+              r"^## \[" + re.escape(version) + r"\][^\n]*\n(.*?)(?=^## |\Z)",
+              re.MULTILINE | re.DOTALL,
+          ).search(changelog)
+
+          if section is None:
+              message = f"CHANGELOG.md has no '## [{version}]' section"
+              if is_tag:
+                  errors.append(message)
+              else:
+                  print(f"::warning title=changelog::{message}")
+          else:
+              heading = section.group(0).splitlines()[0]
+              if "unreleased" in heading.lower():
+                  print(
+                      f"::warning title=changelog::the {version} heading still "
+                      f"reads 'unreleased' — replace it with the release date"
+                  )
+              # Markdown link reference definitions live at the foot of the file
+              # and belong to the document, not to this release's notes.
+              body = [
+                  line
+                  for line in section.group(1).strip().splitlines()
+                  if not re.match(r"^\[[^\]]+\]:\s", line)
+              ]
+              pathlib.Path("release-notes.md").write_text(
+                  "\n".join(body).strip() + "\n", encoding="utf-8"
+              )
+
+          if errors:
+              for message in errors:
+                  print(f"::error title=release blocked::{message}")
+              sys.exit(1)
+
+          # A version that is not purely numeric (0.1.0rc1, 0.2.0.dev3) is a
+          # pre-release, and the GitHub release should say so.
+          prerelease = "false" if re.fullmatch(r"\d+(\.\d+)*", version) else "true"
+
+          with pathlib.Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as fh:
+              fh.write(f"version={version}\n")
+              fh.write(f"prerelease={prerelease}\n")
+
+          with pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as fh:
+              fh.write(f"## markproof {version}\n\n")
+              fh.write(f"- ref: `{ref_name}` ({ref_type})\n")
+              fh.write(f"- pyproject version: `{version}`\n")
+              fh.write(f"- pre-release: `{prerelease}`\n")
+              fh.write(f"- publishes: `{'yes' if is_tag else 'no (dry run)'}`\n")
+          PY
+
+      - name: Keep the changelog section as the release notes
+        if: github.ref_type == 'tag'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: release-notes
+          path: release-notes.md
+          if-no-files-found: error
+          retention-days: 7
+
+  quality:
+    name: lint and types
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+      - name: ruff check
+        run: uv run --python 3.11 --extra dev ruff check .
+      - name: ruff format --check
+        run: uv run --python 3.11 --extra dev ruff format --check .
+      - name: mypy
+        run: uv run --python 3.11 --extra dev mypy
+
+  test:
+    name: pytest (py${{ matrix.python-version }})
+    needs: guard
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+      # Same invocation as ci.yml: without the optional extras, because the
+      # default install path has to keep working with zero system dependencies.
+      - name: pytest
+        run: uv run --python ${{ matrix.python-version }} --extra dev pytest
+
+  build:
+    name: build and inspect the distributions
+    needs: [guard, quality, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Build the sdist and the wheel
+        run: uv build --out-dir dist
+
+      - name: Metadata renders and is complete (twine check --strict)
+        run: uvx twine check --strict dist/*
+
+      - name: The filenames carry the version being released
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          set -euo pipefail
+          wheel="dist/markproof-${VERSION}-py3-none-any.whl"
+          sdist="dist/markproof-${VERSION}.tar.gz"
+          for artefact in "${wheel}" "${sdist}"; do
+            if [ ! -f "${artefact}" ]; then
+              echo "::error title=build::${artefact} was not produced"
+              ls -l dist
+              exit 1
+            fi
+          done
+          ls -l dist
+
+      - name: The wheel installs clean and the packaged rulepack travels with it
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          set -euo pipefail
+          smoke="${RUNNER_TEMP}/smoke"
+          uv venv "${smoke}"
+          uv pip install --python "${smoke}/bin/python" \
+            "dist/markproof-${VERSION}-py3-none-any.whl"
+          # The console script reports the version the metadata actually carries,
+          # which is the last place a wrong version could still be hiding.
+          # Matched with a builtin rather than a pipe into `grep -q`: under
+          # `pipefail` an early-exiting grep can hand the step a SIGPIPE and turn
+          # a passing check into a red release.
+          reported="$("${smoke}/bin/markproof" --version)"
+          echo "wheel reports: ${reported}"
+          case "${reported}" in
+            "markproof ${VERSION}") ;;
+            *)
+              echo "::error title=smoke test::the wheel reports '${reported}', expected 'markproof ${VERSION}'"
+              exit 1
+              ;;
+          esac
+          # Rulepacks and pattern files are data, not code, so a packaging
+          # mistake would drop them silently and every check would then fail at
+          # run time. Listing one is the cheapest proof that they shipped.
+          "${smoke}/bin/markproof" rules list art50-eu-2026.07
+
+      - name: Keep the distributions for the publishing job
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish to PyPI
+    needs: [guard, build]
+    # The only irreversible job in this file, and the only one a dry run skips.
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    # Must match the environment name registered with the trusted publisher on
+    # pypi.org, character for character. This is also where a required-reviewer
+    # rule belongs if the release should need a human click.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/markproof
+    permissions:
+      # Mandatory for Trusted Publishing: the job exchanges this OIDC identity
+      # for a short-lived, project-scoped PyPI token. It is also what the PEP 740
+      # attestations are signed with, which the action produces by default.
+      id-token: write
+    steps:
+      - name: Fetch the distributions built above
+        # Deliberately not rebuilt here: what gets published must be the exact
+        # bytes that passed twine check and the smoke install.
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: dist
+          path: dist
+
+      - name: Upload to PyPI
+        # No user, no password, no API token — the identity is the OIDC token
+        # minted for this workflow in this environment. `packages-dir` defaults
+        # to dist/, `attestations` defaults to true.
+        uses: pypa/gh-action-pypi-publish@v1.14.2
+
+  github-release:
+    name: GitHub release
+    needs: [guard, publish]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      # Creating a release writes to the repository; nothing else here does.
+      contents: write
+    steps:
+      - name: Fetch the distributions
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: dist
+          path: dist
+
+      - name: Fetch the release notes
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: release-notes
+          path: notes
+
+      - name: Create the release from the changelog section
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.guard.outputs.version }}
+          PRERELEASE: ${{ needs.guard.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          flags=()
+          if [ "${PRERELEASE}" = "true" ]; then
+            flags+=(--prerelease)
+          fi
+          # ${flags[@]+...} rather than a bare "${flags[@]}": an empty array is
+          # an unbound variable under `set -u` on older bash, and the last step
+          # of a release is the worst place to find that out.
+          gh release create "${TAG}" \
+            --title "markproof ${VERSION}" \
+            --notes-file notes/release-notes.md \
+            --verify-tag \
+            ${flags[@]+"${flags[@]}"} \
+            dist/*
+          {
+            echo "## Released"
+            echo
+            echo "- PyPI: https://pypi.org/project/markproof/${VERSION}/"
+            echo "- GitHub: ${GITHUB_SERVER_URL}/${GH_REPO}/releases/tag/${TAG}"
+          } >>"${GITHUB_STEP_SUMMARY}"

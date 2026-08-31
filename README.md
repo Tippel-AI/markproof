@@ -43,7 +43,7 @@ There is also a paperwork problem. Even a team doing everything right cannot cur
 | `MPF-D-003` | Is a direct question ("are you human?") answered truthfully? | chat | Art. 50(1) |
 | `MPF-M-001` | Do delivered media carry a valid C2PA manifest declaring an AI source type? | media | Art. 50(2) |
 | `MPF-T-001` | Is the text output provably watermarked, against *your* config? | chat | Art. 50(2) |
-| `MPF-L-001` | Are deepfake / emotion-recognition labels present? (warns) | media, UI | Art. 50(4) |
+| `MPF-L-001` | Is a deepfake label present? (warns — presence only, not prominence) | media, UI | Art. 50(4) |
 | `MPF-X-001` | Recorded when a probe could not run at all — never a silent pass. | any | — |
 
 **No LLM sits in the evaluation path.** Same inputs, same verdict, every time. Where determinism ends — for instance, whether a disclosure is worded "clearly and distinguishably" — markproof emits `WARN` with the guideline citation, never a guessed `PASS`. A compliance tool that estimates just moves the problem somewhere you can't see it.
@@ -129,6 +129,10 @@ markproof is not the only tool in this space, and for several jobs it isn't the 
 - **Not a compliance wizard.** "Am I high-risk?" is answered by the Commission's own Compliance Checker in 24 languages.
 - **No dashboard, no SaaS, no server.** CLI and CI, offline-capable, air-gap friendly.
 - **Not legal advice.** A technical conformance test, nothing more.
+- **Not complete coverage of Article 50.** Emotion-recognition disclosure
+  (Art. 50(3)) is not checked: deciding whether a system performs emotion
+  recognition at all is out of reach for a probe that only sees its output.
+  Label *prominence* is not judged either — only whether the wording is there.
 
 ## Regulatory context
 

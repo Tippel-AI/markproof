@@ -153,7 +153,16 @@ def build_report(
     """
     return Report(
         target=target,
-        rulepack={"id": rulepack.rulepack, "version": rulepack.version},
+        rulepack={
+            "id": rulepack.rulepack,
+            "version": rulepack.version,
+            "license": rulepack.license,
+            # The findings quote title, article and guideline_ref verbatim from
+            # CC-BY material, so the credit line has to travel with them. A
+            # report that carries the text but not the attribution does not
+            # discharge the licence.
+            "attribution": " ".join(rulepack.attribution.split()),
+        },
         run=RunMetadata(
             timestamp=timestamp or datetime.now(UTC).isoformat(timespec="seconds"),
             markproof_version=__version__,

@@ -108,3 +108,70 @@ class TestClaims:
         text = _readme()
         for project in ("art50-ci", "provcheck", "c2patool"):
             assert project in text, f"{project} is no longer mentioned"
+
+
+class TestShippedExamples:
+    """Every example config in the repo must load — they are what people copy."""
+
+    @pytest.mark.parametrize(
+        "relative",
+        ["examples/markproof.yaml", "examples/demo-bot/markproof.yaml"],
+    )
+    def test_example_config_validates(self, relative: str) -> None:
+        root = Path(__file__).resolve().parent.parent
+        path = root / relative
+        if not path.is_file():
+            pytest.skip(f"{relative} not present")
+        load_config(path)
+
+
+class TestAttribution:
+    """CC-BY travels with the material, not next to it."""
+
+    def test_reports_carry_the_rulepack_attribution(self) -> None:
+        """Findings quote the guidelines verbatim; the credit must go with them."""
+        from markproof.report.model import build_report
+        from markproof.rules.schema import load_rulepack
+
+        root = Path(__file__).resolve().parent.parent
+        rulepack = load_rulepack(root / "src" / "markproof" / "rulepacks" / "art50-eu-2026.07.yaml")
+        report = build_report(
+            target="t", rulepack=rulepack, findings=[], timestamp="2026-08-31T12:00:00+00:00"
+        )
+        assert "attribution" in report.rulepack
+        assert "European Commission" in report.rulepack["attribution"]
+        assert report.rulepack["license"] == "CC-BY-4.0"
+
+    def test_the_summary_shows_it_too(self) -> None:
+        from markproof.report.model import build_report
+        from markproof.report.summary import render_summary
+        from markproof.rules.schema import load_rulepack
+
+        root = Path(__file__).resolve().parent.parent
+        rulepack = load_rulepack(root / "src" / "markproof" / "rulepacks" / "art50-eu-2026.07.yaml")
+        report = build_report(
+            target="t", rulepack=rulepack, findings=[], timestamp="2026-08-31T12:00:00+00:00"
+        )
+        assert "European Commission" in render_summary(report)
+
+
+class TestNoOverclaiming:
+    """The README must not advertise a check the rulepack does not perform."""
+
+    def test_emotion_recognition_is_not_advertised_as_checked(self) -> None:
+        """It is Art. 50(3), it needs knowledge a probe cannot have, and no rule does it."""
+        from markproof.rules.schema import load_rulepack
+
+        root = Path(__file__).resolve().parent.parent
+        rulepack = load_rulepack(root / "src" / "markproof" / "rulepacks" / "art50-eu-2026.07.yaml")
+        categories = {
+            getattr(rule.check, "category", None)
+            for rule in rulepack.rules
+            if hasattr(rule.check, "category")
+        }
+        text = _readme()
+        if "emotion" not in categories:
+            table = text[text.index("| Rule |") : text.index("**No LLM sits")]
+            assert "emotion" not in table.lower(), (
+                "the rule table advertises emotion recognition, which no rule checks"
+            )
