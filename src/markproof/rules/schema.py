@@ -169,16 +169,21 @@ class C2paVerifyCheck(BaseModel):
 class SynthIdThresholds(BaseModel):
     """Where the mean-g score stops being evidence and starts being noise.
 
-    Calibrated against measurement, not taste: an unwatermarked token sequence
-    scores about 0.50 (chance), and the expected value for a watermarked one is
-    about 0.75. The band between the two bounds is the honest middle, and a rule
-    that wants a verdict there is asking the tool to guess.
+    Calibrated against a sweep of 16 seeds per cell, not taste
+    (``tests/fixtures/text/generate.py --sweep``). At 100 tokens or more the
+    unwatermarked maximum measured 0.519 and the watermarked minimum 0.764, so
+    0.56 sits about 3.6 sigma above chance while 0.70 keeps roughly 0.06 of
+    headroom below the marked population.
+
+    The gap between them is deliberately wide: partly marked text measured
+    0.586-0.657 and lands inside it rather than on a verdict. A narrower band
+    would hand those texts a confident answer they have not earned.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    watermarked_at: float = Field(default=0.65, ge=0.0, le=1.0)
-    not_watermarked_below: float = Field(default=0.55, ge=0.0, le=1.0)
+    watermarked_at: float = Field(default=0.70, ge=0.0, le=1.0)
+    not_watermarked_below: float = Field(default=0.56, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def _ordered(self) -> SynthIdThresholds:
@@ -207,9 +212,12 @@ class SynthIdDetectCheck(BaseModel):
     """``mean-g`` needs only the watermark config; ``bayesian`` needs a trained
     detector model the operator must supply."""
 
-    min_tokens: int = Field(default=200, ge=1)
-    """Below this, the score is noise. Short answers are skipped, never guessed
-    at — the detector's confidence grows with sequence length."""
+    min_tokens: int = Field(default=100, ge=1)
+    """Below this the score is noise, so short answers are skipped rather than
+    guessed at. The floor is measured, not chosen: at 40 tokens the clean and
+    weakly-marked populations nearly touch (0.540 against 0.565) and weakly
+    marked text can reach 0.698, which any sensible upper threshold would call
+    watermarked. At 100 the two populations separate cleanly."""
 
     thresholds: SynthIdThresholds = Field(default_factory=SynthIdThresholds)
     on_uncertain: Severity | Literal["skip"] = Severity.FAIL

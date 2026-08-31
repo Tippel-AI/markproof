@@ -27,6 +27,7 @@ from rich.table import Table
 
 from markproof import __version__
 from markproof.checks.disclosure import PatternSet, load_pattern_set
+from markproof.checks.synthid import WatermarkConfig, load_watermark_config
 from markproof.config import ConfigError, MarkproofConfig, MediaProbeConfig, load_config
 from markproof.probes.base import Evidence, ProbeError
 from markproof.probes.http_chat import HttpChatProbe
@@ -104,6 +105,23 @@ def _load_pattern_sets(rulepack: Rulepack) -> dict[str, PatternSet]:
     return sets
 
 
+def _load_watermark(config: MarkproofConfig, config_path: Path) -> WatermarkConfig | None:
+    """Load the operator's watermark config, resolved relative to markproof.yaml.
+
+    Relative resolution matters: the path lives in a config file that is
+    committed, while the file it points at usually is not.
+    """
+    if config.text_marking is None or config.text_marking.method != "synthid":
+        return None
+    raw = config.text_marking.watermark_config
+    if raw is None:
+        return None
+    path = Path(raw)
+    if not path.is_absolute():
+        path = config_path.parent / path
+    return load_watermark_config(path)
+
+
 def _collect(config: MarkproofConfig) -> list[Evidence]:
     """Run every configured probe."""
     evidences: list[Evidence] = []
@@ -165,12 +183,13 @@ def run(
         config = load_config(config_path)
         rulepack = load_rulepack(_resolve_rulepack(rulepack_name or config.rulepack))
         pattern_sets = _load_pattern_sets(rulepack)
+        watermark = _load_watermark(config, config_path)
         evidences = _collect(config)
     except (ConfigError, ProbeError) as exc:
         err_console.print(f"[bold red]error:[/] {exc}")
         raise typer.Exit(code=2) from exc
 
-    findings = evaluate(rulepack, evidences, pattern_sets)
+    findings = evaluate(rulepack, evidences, pattern_sets, watermark)
     _render(findings, config.target.name, rulepack)
 
     if json_out is not None:

@@ -40,6 +40,10 @@ from markproof.rules.schema import SynthIdDetectCheck
 if TYPE_CHECKING:  # pragma: no cover - import cost only matters at runtime
     pass
 
+#: Above this, a score is no longer explainable as chance. Derived from the
+#: calibration sweep, where clean text at 100+ tokens never exceeded 0.519.
+_CHANCE_CEILING = 0.55
+
 __all__ = [
     "SynthIdOutcome",
     "SynthIdResult",
@@ -239,9 +243,18 @@ def detect_watermark(
         detail = None
     elif score < check.thresholds.not_watermarked_below:
         outcome = SynthIdOutcome.NOT_WATERMARKED
+        # Only call it chance level when it actually is. A score can sit below a
+        # deliberately strict lower bound and still be far above 0.5, and a
+        # report that misdescribes its own evidence is worse than a terse one.
+        near_chance = score < _CHANCE_CEILING
         detail = (
             f"mean g value {score:.4f} is at chance level — the text carries no "
             "detectable watermark under this configuration"
+            if near_chance
+            else (
+                f"mean g value {score:.4f} is elevated but below the configured "
+                f"lower bound of {check.thresholds.not_watermarked_below}"
+            )
         )
     else:
         outcome = SynthIdOutcome.UNCERTAIN

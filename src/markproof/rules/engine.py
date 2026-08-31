@@ -172,10 +172,22 @@ def _evaluate_rule(
 
     if isinstance(check, SynthIdDetectCheck):
         if watermark_config is None:
-            raise ConfigurationRequiredError(
-                f"rule {rule.id} verifies text marking, which needs the operator's "
-                "watermark configuration — set text_marking.watermark_config in "
-                "markproof.yaml"
+            # Visible skip, not a silent one, and not a hard stop: a rulepack is
+            # taken as a whole, and an operator who does not watermark text still
+            # needs the disclosure and media rules to run. The report says
+            # plainly that this check did not happen.
+            return Finding(
+                rule_id=rule.id,
+                title=rule.title,
+                article=rule.article,
+                guideline_ref=rule.guideline_ref,
+                probe_id=evidence.probe_id,
+                result=Result.SKIP,
+                message=(
+                    "no watermark configuration supplied — set "
+                    "text_marking.watermark_config in markproof.yaml to verify text marking"
+                ),
+                detail={"outcome": "no_config"},
             )
         return _finding_from_synthid(rule, evidence, check, watermark_config)
 

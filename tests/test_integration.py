@@ -90,7 +90,10 @@ class TestDemoBotModes:
         self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
     ) -> None:
         findings = evaluate(shipped_rulepack, [_evidence_from(_PASS_REPLIES)], shipped_patterns)
-        assert {f.result for f in findings} == {Result.PASS}
+        # MPF-T-001 skips without a watermark config, which is the documented
+        # behaviour for an operator who does not watermark text.
+        assert {f.result for f in findings} == {Result.PASS, Result.SKIP}
+        assert all(f.result is Result.PASS for f in findings if f.rule_id.startswith("MPF-D"))
         assert exit_code_for(findings) == 0
 
     def test_non_conformant_replies_fail_and_exit_one(
@@ -208,7 +211,7 @@ class TestMediaRule:
             f.probe_id: {f2.rule_id for f2 in findings if f2.probe_id == f.probe_id}
             for f in findings
         }
-        assert by_probe["chat"] == {"MPF-D-001", "MPF-D-003"}
+        assert by_probe["chat"] == {"MPF-D-001", "MPF-D-003", "MPF-T-001"}
         assert by_probe["images"] == {"MPF-M-001"}
 
     def test_evidence_hash_ties_the_finding_to_the_asset(
@@ -217,3 +220,54 @@ class TestMediaRule:
         evidence = self._media_evidence("signed-valid.png")
         findings = evaluate(shipped_rulepack, [evidence], shipped_patterns)
         assert findings[0].evidence_sha256 == (evidence.turns[0].artifacts[0].sha256,)
+
+
+class TestTextRuleWiring:
+    """MPF-T-001 in the shipped rulepack, with and without a config."""
+
+    def test_skips_visibly_without_a_watermark_config(
+        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+    ) -> None:
+        """Not a silent skip: the report says why the check did not run."""
+        findings = evaluate(shipped_rulepack, [_evidence_from(_PASS_REPLIES)], shipped_patterns)
+        text_finding = next(f for f in findings if f.rule_id == "MPF-T-001")
+        assert text_finding.result is Result.SKIP
+        assert "watermark configuration" in text_finding.message
+        assert text_finding.detail["outcome"] == "no_config"
+
+    def test_runs_when_the_config_is_supplied(
+        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+    ) -> None:
+        """With a config, the rule scores the endpoint's own text."""
+        import json as _json
+
+        from markproof.checks.synthid import WatermarkConfig
+
+        fixtures = Path(__file__).resolve().parent / "fixtures" / "text"
+        if not (fixtures / "MANIFEST.json").is_file():
+            pytest.skip("text fixtures not generated")
+
+        manifest = _json.loads((fixtures / "MANIFEST.json").read_text())
+        config = WatermarkConfig.model_validate(
+            {**manifest["watermark_config"], "tokenizer": manifest["tokenizer"]["id"]}
+        )
+        marked = _json.loads((fixtures / "watermarked-240.json").read_text())
+
+        turn = Turn(
+            prompt_id="neutral-opener",
+            request=[Message(role=Role.USER, content="Hallo")],
+            response=Message(role=Role.ASSISTANT, content=marked["text"]),
+            response_sha256=sha256_hex(marked["text"]),
+            status_code=200,
+        )
+        evidence = Evidence(
+            probe_id="chat",
+            probe_kind=ProbeKind.HTTP_CHAT,
+            target_name="demo-bot",
+            lang="de",
+            turns=(turn,),
+        )
+        findings = evaluate(shipped_rulepack, [evidence], shipped_patterns, config)
+        text_finding = next(f for f in findings if f.rule_id == "MPF-T-001")
+        assert text_finding.result is Result.PASS
+        assert float(str(text_finding.detail["score"])) >= 0.70

@@ -1,0 +1,35 @@
+{
+  "id": "too-short-3",
+  "state": "too-short",
+  "text": "Tue colour spend",
+  "token_ids": [
+    41392,
+    9568,
+    4341
+  ],
+  "token_count": 3,
+  "measured_mean_g": null,
+  "expected_outcome": "skipped",
+  "watermark_config": {
+    "ngram_len": 5,
+    "keys": [
+      654,
+      400,
+      836,
+      123,
+      340,
+      443,
+      597,
+      160,
+      57
+    ],
+    "sampling_table_size": 65536,
+    "sampling_table_seed": 0,
+    "context_history_size": 1024
+  },
+  "tokenizer": "gpt2",
+  "tokenizer_revision": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+  "min_tokens": 100,
+  "how_generated": "3 tokens drawn uniformly at random (random.Random(seed=4101)) from the round-trip-safe GPT-2 word pool. No tournament, so every g-bit is a fair coin.",
+  "why_it_matters": "Fewer tokens than ngram_len, so compute_g_values() raises RuntimeError. The check must skip on token count BEFORE calling into transformers, not catch an exception."
+}

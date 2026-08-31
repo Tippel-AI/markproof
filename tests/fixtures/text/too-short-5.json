@@ -1,0 +1,37 @@
+{
+  "id": "too-short-5",
+  "state": "too-short",
+  "text": "Commercial perceived compute witness ast",
+  "token_ids": [
+    48401,
+    11067,
+    24061,
+    4973,
+    6468
+  ],
+  "token_count": 5,
+  "measured_mean_g": 0.555556,
+  "expected_outcome": "skipped",
+  "watermark_config": {
+    "ngram_len": 5,
+    "keys": [
+      654,
+      400,
+      836,
+      123,
+      340,
+      443,
+      597,
+      160,
+      57
+    ],
+    "sampling_table_size": 65536,
+    "sampling_table_seed": 0,
+    "context_history_size": 1024
+  },
+  "tokenizer": "gpt2",
+  "tokenizer_revision": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+  "min_tokens": 100,
+  "how_generated": "5 tokens drawn uniformly at random (random.Random(seed=4102)) from the round-trip-safe GPT-2 word pool. No tournament, so every g-bit is a fair coin.",
+  "why_it_matters": "Exactly ngram_len: one single n-gram. A number is produced (~0.33) and it is pure noise. Computable is not the same as meaningful."
+}
