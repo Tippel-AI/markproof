@@ -166,11 +166,19 @@ markproof is not the only tool in this space, and for several jobs it isn't the 
 - **Not a judge of whether an obligation applies to you.** `applicability` records
   *your* answer; it does not compute one. Whether Article 50 binds a given system,
   and as provider or as deployer, is a legal question this tool has no view on.
-- **Not a marking convention for web pages.** There is no established
-  machine-readable standard for marking generated *text* in an HTML document the
-  way C2PA marks media. markproof will not invent a `<meta>` tag of its own and
-  call the result conformance. On a rendered page it checks one thing: whether
-  the region you name still carries the watermark you configured.
+- **Not yet checking the C2PA marking of web pages.** On a rendered page
+  markproof checks one thing today: whether the region you name still carries
+  the watermark you configured. It does not yet look for a C2PA manifest bound
+  to the document — [C2PA 2.4](https://spec.c2pa.org/specifications/specifications/2.4/specs/C2PA_Specification.html)
+  (April 2026) added one in §A.7, along with a `c2pa.ai-disclosure` assertion in
+  §18.28, and a rule for it is [open](https://github.com/Tippel-AI/markproof/issues/18).
+  What markproof will not do is invent a `<meta>` convention of its own and call
+  the result conformance.
+- **Not a detection check.** Article 50(2) asks for marking *and* detectability,
+  and the Commission Guidelines are explicit that satisfying one does not
+  discharge the other. markproof measures whether the mark arrived. Whether a
+  third party can detect it — the second limb — is not something a probe against
+  your endpoint can answer.
 
 ## Regulatory context
 

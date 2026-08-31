@@ -83,11 +83,17 @@ than none:
   about a narrow test, not a defence.
 - **Text marking on a web page is checked in one place only.** For a rendered
   document markproof scores the region named by `content_selector` against the
-  operator's watermark configuration, and nothing else. It does not look for a
-  machine-readable marking convention in the HTML, because for generated *text*
-  in a web document there is no established one to look for — unlike C2PA for
-  media. Inventing a tag and reporting its absence as non-conformance would
-  manufacture a standard rather than test against one.
+  operator's watermark configuration, and nothing else. It does **not** follow
+  the C2PA binding for HTML documents (C2PA Technical Specification 2.4, §A.7,
+  April 2026) or the `c2pa.ai-disclosure` assertion (§18.28). Those exist and are
+  checkable; markproof has not implemented them yet. A green run on a web page
+  therefore says the watermark survived, not that the document is marked.
+- **Marking is checked, detectability is not.** Article 50(2) requires that
+  outputs be marked *and* detectable as artificially generated. markproof
+  measures the first limb against your own configuration. Whether a third party
+  who does not hold your watermark keys can detect the mark is a property of the
+  ecosystem, not of your endpoint, and no probe run against your system can
+  establish it.
 
 ## Warranty
 
