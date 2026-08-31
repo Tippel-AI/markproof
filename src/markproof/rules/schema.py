@@ -14,6 +14,7 @@ paraphrase the sources and cite clause numbers — no verbatim paragraphs in YAM
 
 from __future__ import annotations
 
+import hashlib
 import re
 from enum import StrEnum
 from pathlib import Path
@@ -457,6 +458,20 @@ class Rulepack(BaseModel):
     source: list[Source] = Field(min_length=1)
     rules: list[Rule] = Field(min_length=1)
 
+    source_sha256: str | None = None
+    """SHA-256 of the file this pack was loaded from, set by :func:`load_rulepack`.
+
+    Without it a report says only which rulepack *id and version* it was judged
+    against, and the loader accepts any local file whose name matches. So a copy
+    of the shipped pack with every ``severity: fail`` rewritten to ``warn``
+    produces a byte-identical report header — the signature then attests to a
+    verdict reached under rules nobody can reconstruct. The digest is what turns
+    "judged against art50-eu-2026.07 v1.0.0" into a checkable statement.
+
+    ``None`` for a pack built in memory, which is how tests construct them; a
+    report produced from one says so rather than inventing a digest.
+    """
+
     @field_validator("rulepack")
     @classmethod
     def _valid_rulepack_id(cls, v: str) -> str:
@@ -511,6 +526,10 @@ def load_rulepack(path: Path) -> Rulepack:
         raise ValueError(f"{path}: expected a YAML mapping at the top level")
 
     pack = Rulepack.model_validate(raw)
+    # Over the file's bytes, not over the parsed model: what a reader can
+    # re-compute is the file, and any difference in it — a reordered rule, a
+    # changed severity, an edited citation — has to show up here.
+    pack = pack.model_copy(update={"source_sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
 
     expected_id = path.stem
     if pack.rulepack != expected_id:

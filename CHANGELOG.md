@@ -16,6 +16,21 @@ explicitly: the **rulepack format** — what a rulepack file may contain — and
 
 ## [Unreleased]
 
+### Security
+
+- **The signed report now binds the rules and the endpoint it judged.** A report
+  recorded its rulepack as four strings — id, version, licence, attribution — and
+  the probed URL not at all. Since the loader prefers any local file over the
+  packaged pack and only checks the id against the *filename*, a copy of the
+  shipped rulepack with every `severity: fail` rewritten to `warn` produced a
+  byte-identical header: the signature attested to a verdict reached under rules
+  nobody could reconstruct, about a system nobody could identify. The rulepack
+  block now carries the SHA-256 of the file it was loaded from, and a `probes`
+  block records the endpoints. Both are covered by the signature.
+
+  **Report schema:** `rulepack.sha256` and `probes` are new. Both are omitted when
+  unknown — a rulepack built in memory claims no digest rather than inventing one.
+
 ### Added
 
 - **Targets can declare which Article 50 obligations bind them** (#14). A new
