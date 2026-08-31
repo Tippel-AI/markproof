@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
+# SPDX-License-Identifier: Apache-2.0
+#
+# Pinned exactly: the demo-bot is a test fixture, so a silent upgrade that
+# changes a validation error or a JSON field order is a failing determinism
+# gate, not a nice surprise. Versions checked against PyPI on 2026-08-31.
+# Transitive dependencies (starlette, pydantic-core, anyio, h11, click) are
+# resolved by pip; pin them too if you need a full lock.
+#
+# Separate from the markproof package itself — nothing in this file is a
+# runtime dependency of markproof.
+
+fastapi==0.141.1
+uvicorn==0.52.4
+pydantic==2.13.5
