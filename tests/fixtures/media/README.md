@@ -129,10 +129,12 @@ often serve certificates the runtime does not trust, and that is a different
 finding from a missing or wrong assertion.
 
 ```python
-settings = c2pa.Settings.from_dict({
-    "verify": {"verify_trust": True},
-    "trust": {"trust_anchors": root_ca_pem},   # MANIFEST.json -> signing.trust_anchor_pem
-})
+settings = c2pa.Settings.from_dict(
+    {
+        "verify": {"verify_trust": True},
+        "trust": {"trust_anchors": root_ca_pem},  # MANIFEST.json -> signing.trust_anchor_pem
+    }
+)
 reader = c2pa.Reader(path, context=c2pa.ContextBuilder().with_settings(settings).build())
 ```
 

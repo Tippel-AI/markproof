@@ -207,7 +207,8 @@ def _finding_from_c2pa(rule: Rule, evidence: Evidence, check: C2paVerifyCheck) -
     hashes = tuple(a.sha256 for turn in evidence.turns for a in turn.artifacts)
 
     if not failed:
-        plural = "s" if len(results) != 1 else ""
+        noun = "asset" if len(results) == 1 else "assets"
+        verb = "carries" if len(results) == 1 else "carry"
         return Finding(
             rule_id=rule.id,
             title=rule.title,
@@ -215,7 +216,7 @@ def _finding_from_c2pa(rule: Rule, evidence: Evidence, check: C2paVerifyCheck) -
             guideline_ref=rule.guideline_ref,
             probe_id=evidence.probe_id,
             result=Result.PASS,
-            message=f"{len(results)} asset{plural} carry a valid, correctly marked manifest",
+            message=f"{len(results)} {noun} {verb} a valid, correctly marked manifest",
             detail=detail,
             evidence_sha256=hashes,
         )

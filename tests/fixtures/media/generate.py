@@ -129,6 +129,7 @@ twZBFFehbxLoShi769l+UlhnB1RCvVMOpNKe562HOoKmLoBL48CONMnW
 -----END PRIVATE KEY-----
 """
 
+
 def _split_pem_certs(pem: str) -> list[str]:
     """Split a PEM bundle into complete, individually parseable certificates."""
     end = "-----END CERTIFICATE-----"
@@ -449,16 +450,25 @@ def make_jpeg(w: int = IMG_W, h: int = IMG_H, phase: int = 0, quality: int = 80)
     bw = _BitWriter()
     pred = [0, 0, 0]
 
-    def encode_block(plane: list[int], bx: int, by: int, q: list[int],
-                     dc_t: dict[int, tuple[int, int]], ac_t: dict[int, tuple[int, int]],
-                     ci: int) -> None:
+    def encode_block(
+        plane: list[int],
+        bx: int,
+        by: int,
+        q: list[int],
+        dc_t: dict[int, tuple[int, int]],
+        ac_t: dict[int, tuple[int, int]],
+        ci: int,
+    ) -> None:
         # Gather one 8x8 block, clamping at the edges.
-        blk = [[plane[min(by + yy, h - 1) * w + min(bx + xx, w - 1)] for xx in range(8)]
-               for yy in range(8)]
+        blk = [
+            [plane[min(by + yy, h - 1) * w + min(bx + xx, w - 1)] for xx in range(8)]
+            for yy in range(8)
+        ]
         # Exact integer 2-D DCT, separable: rows then columns, no rounding
         # until the final quantisation step.
-        tmp = [[sum(blk[yy][xx] * _A[xx][u] for xx in range(8)) for u in range(8)]
-               for yy in range(8)]
+        tmp = [
+            [sum(blk[yy][xx] * _A[xx][u] for xx in range(8)) for u in range(8)] for yy in range(8)
+        ]
         zz = [0] * 64
         for i in range(64):
             v, u = divmod(ZIGZAG[i], 8)
@@ -548,8 +558,12 @@ def make_wav(seconds: int = 1, rate: int = 8000, period: int = 18, amp: int = 12
     fmt = struct.pack("<HHIIHH", 1, 1, rate, rate * 2, 2, 16)
     body = (
         b"WAVE"
-        + b"fmt " + struct.pack("<I", len(fmt)) + fmt
-        + b"data" + struct.pack("<I", len(data)) + data
+        + b"fmt "
+        + struct.pack("<I", len(fmt))
+        + fmt
+        + b"data"
+        + struct.pack("<I", len(data))
+        + data
     )
     return b"RIFF" + struct.pack("<I", len(body)) + body
 
@@ -578,43 +592,62 @@ def _fbox(tag: bytes, version: int, flags: int, *parts: bytes) -> bytes:
     return _box(tag, bytes([version]) + flags.to_bytes(3, "big"), *parts)
 
 
-def make_mp4(w: int = IMG_W, h: int = IMG_H, n: int = VIDEO_FRAMES,
-             timescale: int = 600, dur: int = 120) -> bytes:
+def make_mp4(
+    w: int = IMG_W, h: int = IMG_H, n: int = VIDEO_FRAMES, timescale: int = 600, dur: int = 120
+) -> bytes:
     """A real, decodable MJPEG video: every frame is one of our own JPEGs."""
     frames = [make_jpeg(w, h, phase=f * 16) for f in range(n)]
     duration = n * dur
     unity = struct.pack(">9i", 0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x40000000)
 
     ftyp = _box(b"ftyp", b"isom", struct.pack(">I", 512), b"isomiso2mp41qt  ")
-    mvhd = _fbox(b"mvhd", 0, 0,
-                 struct.pack(">IIII", 0, 0, timescale, duration),
-                 struct.pack(">i", 0x00010000) + struct.pack(">h", 0x0100)
-                 + b"\x00\x00" + b"\x00" * 8,
-                 unity + b"\x00" * 24 + struct.pack(">I", 2))
-    tkhd = _fbox(b"tkhd", 0, 7,
-                 struct.pack(">IIIII", 0, 0, 1, 0, duration) + b"\x00" * 8,
-                 struct.pack(">hhhh", 0, 0, 0, 0) + unity,
-                 struct.pack(">II", w << 16, h << 16))
-    mdhd = _fbox(b"mdhd", 0, 0,
-                 struct.pack(">IIII", 0, 0, timescale, duration) + struct.pack(">HH", 0x55C4, 0))
+    mvhd = _fbox(
+        b"mvhd",
+        0,
+        0,
+        struct.pack(">IIII", 0, 0, timescale, duration),
+        struct.pack(">i", 0x00010000) + struct.pack(">h", 0x0100) + b"\x00\x00" + b"\x00" * 8,
+        unity + b"\x00" * 24 + struct.pack(">I", 2),
+    )
+    tkhd = _fbox(
+        b"tkhd",
+        0,
+        7,
+        struct.pack(">IIIII", 0, 0, 1, 0, duration) + b"\x00" * 8,
+        struct.pack(">hhhh", 0, 0, 0, 0) + unity,
+        struct.pack(">II", w << 16, h << 16),
+    )
+    mdhd = _fbox(
+        b"mdhd",
+        0,
+        0,
+        struct.pack(">IIII", 0, 0, timescale, duration) + struct.pack(">HH", 0x55C4, 0),
+    )
     hdlr = _fbox(b"hdlr", 0, 0, struct.pack(">I", 0) + b"vide" + b"\x00" * 12 + b"VideoHandler\x00")
     vmhd = _fbox(b"vmhd", 0, 1, struct.pack(">HHHH", 0, 0, 0, 0))
     dinf = _box(b"dinf", _fbox(b"dref", 0, 0, struct.pack(">I", 1) + _fbox(b"url ", 0, 1)))
 
     name = b"Motion JPEG"
     compressor = bytes([len(name)]) + name + b"\x00" * (31 - len(name))
-    sample_entry = _box(b"jpeg",
-                        b"\x00" * 6 + struct.pack(">H", 1) + b"\x00" * 16,
-                        struct.pack(">HH", w, h) + struct.pack(">II", 0x00480000, 0x00480000),
-                        struct.pack(">I", 0) + struct.pack(">H", 1) + compressor,
-                        struct.pack(">H", 0x0018) + struct.pack(">h", -1))
+    sample_entry = _box(
+        b"jpeg",
+        b"\x00" * 6 + struct.pack(">H", 1) + b"\x00" * 16,
+        struct.pack(">HH", w, h) + struct.pack(">II", 0x00480000, 0x00480000),
+        struct.pack(">I", 0) + struct.pack(">H", 1) + compressor,
+        struct.pack(">H", 0x0018) + struct.pack(">h", -1),
+    )
     stsd = _fbox(b"stsd", 0, 0, struct.pack(">I", 1) + sample_entry)
     stts = _fbox(b"stts", 0, 0, struct.pack(">I", 1) + struct.pack(">II", n, dur))
-    stss = _fbox(b"stss", 0, 0,
-                 struct.pack(">I", n) + b"".join(struct.pack(">I", i + 1) for i in range(n)))
+    stss = _fbox(
+        b"stss", 0, 0, struct.pack(">I", n) + b"".join(struct.pack(">I", i + 1) for i in range(n))
+    )
     stsc = _fbox(b"stsc", 0, 0, struct.pack(">I", 1) + struct.pack(">III", 1, n, 1))
-    stsz = _fbox(b"stsz", 0, 0,
-                 struct.pack(">II", 0, n) + b"".join(struct.pack(">I", len(s)) for s in frames))
+    stsz = _fbox(
+        b"stsz",
+        0,
+        0,
+        struct.pack(">II", 0, n) + b"".join(struct.pack(">I", len(s)) for s in frames),
+    )
 
     def build_moov(chunk_offset: int) -> bytes:
         stco = _fbox(b"stco", 0, 0, struct.pack(">I", 1) + struct.pack(">I", chunk_offset))
@@ -675,8 +708,13 @@ def _builder_context() -> Any:
     return c2pa.ContextBuilder().with_settings(settings).build()
 
 
-def sign_asset(src: Path, dst: Path, fmt: str, assertions: list[dict[str, Any]],
-               claim_version: int | None = None) -> None:
+def sign_asset(
+    src: Path,
+    dst: Path,
+    fmt: str,
+    assertions: list[dict[str, Any]],
+    claim_version: int | None = None,
+) -> None:
     manifest: dict[str, Any] = {
         "claim_generator_info": [{"name": "markproof-fixtures", "version": "0.1.0"}],
         "title": dst.name,
@@ -690,8 +728,9 @@ def sign_asset(src: Path, dst: Path, fmt: str, assertions: list[dict[str, Any]],
     c2pa.Builder(manifest, context=_builder_context()).sign_file(src, dst, build_signer())
 
 
-def actions_assertion(source_type: str | None,
-                      action: str = "c2pa.created") -> list[dict[str, Any]]:
+def actions_assertion(
+    source_type: str | None, action: str = "c2pa.created"
+) -> list[dict[str, Any]]:
     entry: dict[str, Any] = {"action": action}
     if source_type is not None:
         entry["digitalSourceType"] = source_type
@@ -708,8 +747,13 @@ def inspect_asset(path: Path) -> dict[str, Any]:
     try:
         reader = c2pa.Reader(str(path), context=_reader_context())
     except Exception as exc:
-        return {"manifest": False, "state": None, "source_types": [],
-                "failures": [], "error": f"{type(exc).__name__}: {exc}"}
+        return {
+            "manifest": False,
+            "state": None,
+            "source_types": [],
+            "failures": [],
+            "error": f"{type(exc).__name__}: {exc}",
+        }
     state = str(reader.get_validation_state())
     results = reader.get_validation_results() or {}
     active = results.get("activeManifest", {}) or {}
@@ -729,8 +773,13 @@ def inspect_asset(path: Path) -> dict[str, Any]:
         # state but fail to deserialise. Surface it rather than reporting an
         # empty assertion list, which would look like "signed but silent".
         read_error = f"could not read assertions: {type(exc).__name__}: {exc}"
-    return {"manifest": True, "state": state, "source_types": source_types,
-            "failures": failures, "error": read_error}
+    return {
+        "manifest": True,
+        "state": state,
+        "source_types": source_types,
+        "failures": failures,
+        "error": read_error,
+    }
 
 
 # ===========================================================================
@@ -758,6 +807,7 @@ def _tamper(ext: str, data: bytes) -> bytes:
     well-formed and still decodes; only the C2PA hash binding breaks.
     """
     if ext == "png":
+
         def mutate(raw: bytes) -> bytes:
             buf = bytearray(raw)
             # Invert a horizontal band of real pixels (skip filter bytes).
@@ -766,6 +816,7 @@ def _tamper(ext: str, data: bytes) -> bytes:
                 for i in range(start, start + IMG_W * 3):
                     buf[i] = 255 - buf[i]
             return bytes(buf)
+
         return png_patch_pixels(data, mutate)
 
     if ext == "jpg":
@@ -799,82 +850,110 @@ def fixture_plan() -> list[dict[str, Any]]:
     for ext in FORMATS:
         plan += [
             {
-                "filename": f"signed-valid.{ext}", "ext": ext, "state": "signed-valid",
-                "source_type": DST_TRAINED, "expected_valid": True,
-                "expected_state": "Trusted", "expected_failures": [],
+                "filename": f"signed-valid.{ext}",
+                "ext": ext,
+                "state": "signed-valid",
+                "source_type": DST_TRAINED,
+                "expected_valid": True,
+                "expected_state": "Trusted",
+                "expected_failures": [],
                 "how": f"{FORMATS[ext]['label']} synthesised by generate.py, then signed "
-                       f"with the test CA carrying c2pa.actions.v2 "
-                       f"c2pa.created/digitalSourceType=trainedAlgorithmicMedia.",
+                f"with the test CA carrying c2pa.actions.v2 "
+                f"c2pa.created/digitalSourceType=trainedAlgorithmicMedia.",
                 "why": "The only fully Art. 50-compliant case: sound manifest AND the "
-                       "correct AI-generation assertion. Must PASS.",
+                "correct AI-generation assertion. Must PASS.",
             },
             {
-                "filename": f"signed-wrong-type.{ext}", "ext": ext, "state": "signed-wrong-type",
-                "source_type": DST_ALGORITHMIC, "expected_valid": True,
-                "expected_state": "Trusted", "expected_failures": [],
+                "filename": f"signed-wrong-type.{ext}",
+                "ext": ext,
+                "state": "signed-wrong-type",
+                "source_type": DST_ALGORITHMIC,
+                "expected_valid": True,
+                "expected_state": "Trusted",
+                "expected_failures": [],
                 "how": f"As signed-valid.{ext}, but the assertion says "
-                       f"digitalSourceType=algorithmicMedia.",
+                f"digitalSourceType=algorithmicMedia.",
                 "why": "THE critical negative. Cryptographically flawless and fully "
-                       "trusted, yet not Art. 50 compliant: algorithmicMedia means "
-                       "rule-based/procedural output, not a trained model. A check that "
-                       "only verifies the signature passes this and is wrong.",
+                "trusted, yet not Art. 50 compliant: algorithmicMedia means "
+                "rule-based/procedural output, not a trained model. A check that "
+                "only verifies the signature passes this and is wrong.",
             },
             {
-                "filename": f"unsigned.{ext}", "ext": ext, "state": "unsigned",
-                "source_type": None, "expected_valid": False,
-                "expected_state": None, "expected_failures": [],
+                "filename": f"unsigned.{ext}",
+                "ext": ext,
+                "state": "unsigned",
+                "source_type": None,
+                "expected_valid": False,
+                "expected_state": None,
+                "expected_failures": [],
                 "how": f"{FORMATS[ext]['label']} synthesised by generate.py and left "
-                       f"untouched. No C2PA data of any kind.",
+                f"untouched. No C2PA data of any kind.",
                 "why": "Baseline: media with no provenance at all. c2pa.Reader raises "
-                       "ManifestNotFound here rather than returning an invalid state, so "
-                       "the check must catch that instead of relying on a return value.",
+                "ManifestNotFound here rather than returning an invalid state, so "
+                "the check must catch that instead of relying on a return value.",
             },
             {
-                "filename": f"tampered.{ext}", "ext": ext, "state": "tampered",
-                "source_type": DST_TRAINED, "expected_valid": False,
+                "filename": f"tampered.{ext}",
+                "ext": ext,
+                "state": "tampered",
+                "source_type": DST_TRAINED,
+                "expected_valid": False,
                 "expected_state": "Invalid",
-                "expected_failures": ["assertion.bmffHash.mismatch"] if ext == "mp4"
-                                     else ["assertion.dataHash.mismatch"],
+                "expected_failures": ["assertion.bmffHash.mismatch"]
+                if ext == "mp4"
+                else ["assertion.dataHash.mismatch"],
                 "how": f"signed-valid.{ext} with its media payload altered afterwards "
-                       f"(see _tamper()); the manifest is left byte-identical.",
+                f"(see _tamper()); the manifest is left byte-identical.",
                 "why": "The manifest still claims trainedAlgorithmicMedia and the "
-                       "signature still verifies, but the content no longer matches the "
-                       "hash. A correct check must reject this despite the good assertion.",
+                "signature still verifies, but the content no longer matches the "
+                "hash. A correct check must reject this despite the good assertion.",
             },
         ]
 
     plan += [
         {
-            "filename": "signed-wrong-type-capture.png", "ext": "png",
-            "state": "signed-wrong-type", "source_type": DST_CAPTURE,
-            "expected_valid": True, "expected_state": "Trusted", "expected_failures": [],
+            "filename": "signed-wrong-type-capture.png",
+            "ext": "png",
+            "state": "signed-wrong-type",
+            "source_type": DST_CAPTURE,
+            "expected_valid": True,
+            "expected_state": "Trusted",
+            "expected_failures": [],
             "how": "As signed-valid.png, but digitalSourceType=digitalCapture.",
             "why": "Synthetic media positively claiming to be a camera photograph -- the "
-                   "blunt misdeclaration, as opposed to the algorithmicMedia near-miss.",
+            "blunt misdeclaration, as opposed to the algorithmicMedia near-miss.",
         },
         {
-            "filename": "signed-composite.png", "ext": "png",
-            "state": "signed-edge-case", "source_type": DST_COMPOSITE,
-            "expected_valid": True, "expected_state": "Trusted", "expected_failures": [],
+            "filename": "signed-composite.png",
+            "ext": "png",
+            "state": "signed-edge-case",
+            "source_type": DST_COMPOSITE,
+            "expected_valid": True,
+            "expected_state": "Trusted",
+            "expected_failures": [],
             "how": "As signed-valid.png, but "
-                   "digitalSourceType=compositeWithTrainedAlgorithmicMedia.",
+            "digitalSourceType=compositeWithTrainedAlgorithmicMedia.",
             "why": "Human-authored composite containing AI-generated parts. Art. 50(2) "
-                   "covers generated OR manipulated content, so whether this must be "
-                   "disclosed is a policy call -- the fixture forces the check to make it "
-                   "explicitly rather than by accident.",
+            "covers generated OR manipulated content, so whether this must be "
+            "disclosed is a policy call -- the fixture forces the check to make it "
+            "explicitly rather than by accident.",
         },
         {
-            "filename": "signed-no-source-type.png", "ext": "png",
-            "state": "signed-no-source-type", "source_type": None,
-            "expected_valid": True, "expected_state": "Trusted", "expected_failures": [],
+            "filename": "signed-no-source-type.png",
+            "ext": "png",
+            "state": "signed-no-source-type",
+            "source_type": None,
+            "expected_valid": True,
+            "expected_state": "Trusted",
+            "expected_failures": [],
             "claim_version": 1,
             "how": "signed with a c2pa.created action carrying NO digitalSourceType. "
-                   "Requires claim_version=1: at claim v2 the SDK rejects this as "
-                   "assertion.action.malformed (verified, see README).",
+            "Requires claim_version=1: at claim v2 the SDK rejects this as "
+            "assertion.action.malformed (verified, see README).",
             "why": "A manifest that is present, trusted and silent on AI provenance. "
-                   "Distinct from both unsigned and wrong-type, and common in the wild "
-                   "from older/minimal signers. Must FAIL the Art. 50 check without "
-                   "being reported as a broken signature.",
+            "Distinct from both unsigned and wrong-type, and common in the wild "
+            "from older/minimal signers. Must FAIL the Art. 50 check without "
+            "being reported as a broken signature.",
         },
     ]
     return plan
@@ -933,14 +1012,22 @@ def generate(force: bool, verify_only: bool) -> int:
                 try:
                     if spec["state"] == "tampered":
                         staging = HERE / f".tmp-signed.{ext}"
-                        sign_asset(tmp, staging, FORMATS[ext]["mime"],
-                                   actions_assertion(spec["source_type"]))
+                        sign_asset(
+                            tmp,
+                            staging,
+                            FORMATS[ext]["mime"],
+                            actions_assertion(spec["source_type"]),
+                        )
                         path.write_bytes(_tamper(ext, staging.read_bytes()))
                         staging.unlink()
                     else:
-                        sign_asset(tmp, path, FORMATS[ext]["mime"],
-                                   actions_assertion(spec["source_type"]),
-                                   claim_version=spec.get("claim_version"))
+                        sign_asset(
+                            tmp,
+                            path,
+                            FORMATS[ext]["mime"],
+                            actions_assertion(spec["source_type"]),
+                            claim_version=spec.get("claim_version"),
+                        )
                 finally:
                     tmp.unlink(missing_ok=True)
 
@@ -955,56 +1042,68 @@ def generate(force: bool, verify_only: bool) -> int:
         if not ok:
             failures += 1
 
-        records.append({
-            "filename": spec["filename"],
-            "state": spec["state"],
-            "format": FORMATS[ext]["mime"],
-            # Signed assets are not byte-reproducible (fresh ECDSA nonce and a
-            # fresh manifest UUID per run), so pinning a hash would guarantee a
-            # false alarm. Their *properties* are pinned instead.
-            "sha256": None if signed else sha256(path),
-            "sha256_note": ("omitted: ECDSA nonce and manifest UUID differ on every run"
-                            if signed else "stable: base media are bit-exact reproducible"),
-            "size_bytes": path.stat().st_size,
-            "expected_valid": spec["expected_valid"],
-            "expected_source_type": spec["source_type"],
-            "expected_validation_state": spec["expected_state"],
-            "expected_failure_codes": spec["expected_failures"],
-            "expected_manifest_present": spec["state"] != "unsigned",
-            "how_generated": spec["how"],
-            "why_it_matters": spec["why"],
-        })
+        records.append(
+            {
+                "filename": spec["filename"],
+                "state": spec["state"],
+                "format": FORMATS[ext]["mime"],
+                # Signed assets are not byte-reproducible (fresh ECDSA nonce and a
+                # fresh manifest UUID per run), so pinning a hash would guarantee a
+                # false alarm. Their *properties* are pinned instead.
+                "sha256": None if signed else sha256(path),
+                "sha256_note": (
+                    "omitted: ECDSA nonce and manifest UUID differ on every run"
+                    if signed
+                    else "stable: base media are bit-exact reproducible"
+                ),
+                "size_bytes": path.stat().st_size,
+                "expected_valid": spec["expected_valid"],
+                "expected_source_type": spec["source_type"],
+                "expected_validation_state": spec["expected_state"],
+                "expected_failure_codes": spec["expected_failures"],
+                "expected_manifest_present": spec["state"] != "unsigned",
+                "how_generated": spec["how"],
+                "why_it_matters": spec["why"],
+            }
+        )
 
     if not verify_only:
-        MANIFEST_PATH.write_text(json.dumps({
-            "_comment": "Golden C2PA fixture inventory for markproof M2 (Art. 50 media "
-                        "verification). Generated by generate.py -- do not hand-edit.",
-            "_provenance": "All media are Tippel's own production, synthesised "
-                           "programmatically by generate.py. No third-party asset is "
-                           "present in this directory.",
-            "generator": "tests/fixtures/media/generate.py",
-            "c2pa_python": _pkg_version(),
-            "c2pa_rs_sdk": c2pa.sdk_version(),
-            "signing": {
-                "warning": "TEST MATERIAL ONLY. This CA is self-signed, is in no trust "
-                           "store, and must never be trusted outside these tests.",
-                "algorithm": "ES256 (ECDSA P-256 / SHA-256)",
-                "timestamp_authority": None,
-                "trust_anchor_pem": TEST_ROOT_CA_PEM,
-                "hint": "Inject trust_anchor_pem via c2pa.Settings "
+        MANIFEST_PATH.write_text(
+            json.dumps(
+                {
+                    "_comment": "Golden C2PA fixture inventory for markproof M2 (Art. 50 media "
+                    "verification). Generated by generate.py -- do not hand-edit.",
+                    "_provenance": "All media are Tippel's own production, synthesised "
+                    "programmatically by generate.py. No third-party asset is "
+                    "present in this directory.",
+                    "generator": "tests/fixtures/media/generate.py",
+                    "c2pa_python": _pkg_version(),
+                    "c2pa_rs_sdk": c2pa.sdk_version(),
+                    "signing": {
+                        "warning": "TEST MATERIAL ONLY. This CA is self-signed, is in no trust "
+                        "store, and must never be trusted outside these tests.",
+                        "algorithm": "ES256 (ECDSA P-256 / SHA-256)",
+                        "timestamp_authority": None,
+                        "trust_anchor_pem": TEST_ROOT_CA_PEM,
+                        "hint": "Inject trust_anchor_pem via c2pa.Settings "
                         "{'verify': {'verify_trust': true}, 'trust': {'trust_anchors': ...}} "
                         "to reach validation state 'Trusted'; without it correctly signed "
                         "fixtures validate as 'Valid' with failure "
                         "'signingCredential.untrusted'.",
-            },
-            "source_type_vocabulary": {
-                "compliant": DST_TRAINED,
-                "near_miss": DST_ALGORITHMIC,
-                "capture": DST_CAPTURE,
-                "composite": DST_COMPOSITE,
-            },
-            "files": records,
-        }, indent=2, sort_keys=False) + "\n")
+                    },
+                    "source_type_vocabulary": {
+                        "compliant": DST_TRAINED,
+                        "near_miss": DST_ALGORITHMIC,
+                        "capture": DST_CAPTURE,
+                        "composite": DST_COMPOSITE,
+                    },
+                    "files": records,
+                },
+                indent=2,
+                sort_keys=False,
+            )
+            + "\n"
+        )
 
     return failures
 
@@ -1012,6 +1111,7 @@ def generate(force: bool, verify_only: bool) -> int:
 def _pkg_version() -> str:
     try:
         import importlib.metadata as md
+
         return md.version("c2pa-python")
     except Exception:
         return "unknown"
@@ -1034,79 +1134,121 @@ def _regen_certs() -> None:
     nb = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     na = datetime.datetime(2036, 1, 1, tzinfo=datetime.UTC)
     root_key = ec.derive_private_key(
-        0x5F1D2C3B4A5968778695A4B3C2D1E0F00F1E2D3C4B5A69788796A5B4C3D2E1F0, ec.SECP256R1())
+        0x5F1D2C3B4A5968778695A4B3C2D1E0F00F1E2D3C4B5A69788796A5B4C3D2E1F0, ec.SECP256R1()
+    )
     ee_key = ec.derive_private_key(
-        0x1A2B3C4D5E6F708192A3B4C5D6E7F8091A2B3C4D5E6F708192A3B4C5D6E7F809, ec.SECP256R1())
+        0x1A2B3C4D5E6F708192A3B4C5D6E7F8091A2B3C4D5E6F708192A3B4C5D6E7F809, ec.SECP256R1()
+    )
 
     def name(cn: str) -> x509.Name:
-        return x509.Name([
-            x509.NameAttribute(NameOID.COUNTRY_NAME, "DE"),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "markproof test fixtures"),
-            x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, "NOT FOR PRODUCTION"),
-            x509.NameAttribute(NameOID.COMMON_NAME, cn),
-        ])
+        return x509.Name(
+            [
+                x509.NameAttribute(NameOID.COUNTRY_NAME, "DE"),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "markproof test fixtures"),
+                x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, "NOT FOR PRODUCTION"),
+                x509.NameAttribute(NameOID.COMMON_NAME, cn),
+            ]
+        )
 
     def key_usage(*, cert_sign: bool) -> x509.KeyUsage:
         return x509.KeyUsage(
-            digital_signature=True, content_commitment=False, key_encipherment=False,
-            data_encipherment=False, key_agreement=False, key_cert_sign=cert_sign,
-            crl_sign=cert_sign, encipher_only=False, decipher_only=False)
+            digital_signature=True,
+            content_commitment=False,
+            key_encipherment=False,
+            data_encipherment=False,
+            key_agreement=False,
+            key_cert_sign=cert_sign,
+            crl_sign=cert_sign,
+            encipher_only=False,
+            decipher_only=False,
+        )
 
     root_name = name("markproof test root CA")
-    root = (x509.CertificateBuilder()
-            .subject_name(root_name).issuer_name(root_name)
-            .public_key(root_key.public_key())
-            .serial_number(0x4D41524B50524F4F4600000001)
-            .not_valid_before(nb).not_valid_after(na)
-            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
-            .add_extension(key_usage(cert_sign=True), critical=True)
-            .add_extension(x509.SubjectKeyIdentifier.from_public_key(root_key.public_key()),
-                           critical=False)
-            .sign(root_key, hashes.SHA256()))
-    ee = (x509.CertificateBuilder()
-          .subject_name(name("markproof test signer")).issuer_name(root_name)
-          .public_key(ee_key.public_key())
-          .serial_number(0x4D41524B50524F4F4600000002)
-          .not_valid_before(nb).not_valid_after(na)
-          .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
-          .add_extension(key_usage(cert_sign=False), critical=True)
-          # The C2PA cert profile requires an EKU on the claim signer and
-          # forbids anyExtendedKeyUsage; emailProtection is the interoperable
-          # choice, documentSigning the semantically correct one.
-          .add_extension(x509.ExtendedKeyUsage([
-              ExtendedKeyUsageOID.EMAIL_PROTECTION,
-              x509.ObjectIdentifier("1.3.6.1.5.5.7.3.36"),  # id-kp-documentSigning
-          ]), critical=False)
-          .add_extension(x509.SubjectKeyIdentifier.from_public_key(ee_key.public_key()),
-                         critical=False)
-          .add_extension(
-              x509.AuthorityKeyIdentifier.from_issuer_public_key(root_key.public_key()),
-              critical=False)
-          .sign(root_key, hashes.SHA256()))
-    print((ee.public_bytes(serialization.Encoding.PEM)
-           + root.public_bytes(serialization.Encoding.PEM)).decode())
-    print(ee_key.private_bytes(serialization.Encoding.PEM,
-                               serialization.PrivateFormat.PKCS8,
-                               serialization.NoEncryption()).decode())
+    root = (
+        x509.CertificateBuilder()
+        .subject_name(root_name)
+        .issuer_name(root_name)
+        .public_key(root_key.public_key())
+        .serial_number(0x4D41524B50524F4F4600000001)
+        .not_valid_before(nb)
+        .not_valid_after(na)
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .add_extension(key_usage(cert_sign=True), critical=True)
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(root_key.public_key()), critical=False
+        )
+        .sign(root_key, hashes.SHA256())
+    )
+    ee = (
+        x509.CertificateBuilder()
+        .subject_name(name("markproof test signer"))
+        .issuer_name(root_name)
+        .public_key(ee_key.public_key())
+        .serial_number(0x4D41524B50524F4F4600000002)
+        .not_valid_before(nb)
+        .not_valid_after(na)
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(key_usage(cert_sign=False), critical=True)
+        # The C2PA cert profile requires an EKU on the claim signer and
+        # forbids anyExtendedKeyUsage; emailProtection is the interoperable
+        # choice, documentSigning the semantically correct one.
+        .add_extension(
+            x509.ExtendedKeyUsage(
+                [
+                    ExtendedKeyUsageOID.EMAIL_PROTECTION,
+                    x509.ObjectIdentifier("1.3.6.1.5.5.7.3.36"),  # id-kp-documentSigning
+                ]
+            ),
+            critical=False,
+        )
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(ee_key.public_key()), critical=False
+        )
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(root_key.public_key()),
+            critical=False,
+        )
+        .sign(root_key, hashes.SHA256())
+    )
+    print(
+        (
+            ee.public_bytes(serialization.Encoding.PEM)
+            + root.public_bytes(serialization.Encoding.PEM)
+        ).decode()
+    )
+    print(
+        ee_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode()
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--force", action="store_true",
-                    help="re-create every fixture, including signed ones (changes their bytes)")
-    ap.add_argument("--verify", action="store_true",
-                    help="verify existing fixtures only; write nothing")
-    ap.add_argument("--regenerate-test-certs", action="store_true",
-                    help="print a fresh test CA + signer chain (needs `cryptography`)")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="re-create every fixture, including signed ones (changes their bytes)",
+    )
+    ap.add_argument(
+        "--verify", action="store_true", help="verify existing fixtures only; write nothing"
+    )
+    ap.add_argument(
+        "--regenerate-test-certs",
+        action="store_true",
+        help="print a fresh test CA + signer chain (needs `cryptography`)",
+    )
     args = ap.parse_args(argv)
 
     if args.regenerate_test_certs:
         _regen_certs()
         return 0
 
-    print(f"markproof media fixtures  (c2pa-python {_pkg_version()}, "
-          f"c2pa-rs {c2pa.sdk_version()})")
+    print(f"markproof media fixtures  (c2pa-python {_pkg_version()}, c2pa-rs {c2pa.sdk_version()})")
     failures = generate(force=args.force, verify_only=args.verify)
     if failures:
         print(f"\n{failures} fixture(s) did not match their declared state.")
