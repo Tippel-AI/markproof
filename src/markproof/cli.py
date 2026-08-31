@@ -44,7 +44,13 @@ from markproof.report.sign import (
     verify_report,
 )
 from markproof.report.summary import render_summary
-from markproof.rules.engine import Finding, Result, evaluate, exit_code_for
+from markproof.rules.engine import (
+    Finding,
+    Result,
+    evaluate,
+    exit_code_for,
+    probe_failure_finding,
+)
 from markproof.rules.schema import Rulepack, load_rulepack
 
 __all__ = ["app"]
@@ -134,16 +140,27 @@ def _load_watermark(config: MarkproofConfig, config_path: Path) -> WatermarkConf
     return load_watermark_config(path)
 
 
-def _collect(config: MarkproofConfig) -> list[Evidence]:
-    """Run every configured probe."""
+def _collect(config: MarkproofConfig) -> tuple[list[Evidence], list[Finding]]:
+    """Run every configured probe, collecting failures as findings.
+
+    A probe that cannot reach its target does not abort the run: the other
+    probes still have something to say, and the failure itself is a result worth
+    recording. Aborting would also throw away the evidence that the check was
+    attempted.
+    """
     evidences: list[Evidence] = []
+    failures: list[Finding] = []
     for probe_config in config.target.probes:
         console.print(f"  probing [cyan]{probe_config.id}[/cyan] → {probe_config.url}")
-        if isinstance(probe_config, MediaProbeConfig):
-            evidences.append(MediaProbe(probe_config).collect())
-        else:
-            evidences.append(HttpChatProbe(probe_config).collect())
-    return evidences
+        try:
+            if isinstance(probe_config, MediaProbeConfig):
+                evidences.append(MediaProbe(probe_config).collect())
+            else:
+                evidences.append(HttpChatProbe(probe_config).collect())
+        except ProbeError as exc:
+            console.print(f"    [bold red]unreachable:[/] {exc}")
+            failures.append(probe_failure_finding(probe_config.id, str(exc)))
+    return evidences, failures
 
 
 def _write_report(
@@ -251,15 +268,18 @@ def run(
         rulepack = load_rulepack(_resolve_rulepack(rulepack_name or config.rulepack))
         pattern_sets = _load_pattern_sets(rulepack)
         watermark = _load_watermark(config, config_path)
-        evidences = _collect(config)
-    except (ConfigError, ProbeError, SigningError, ValueError) as exc:
+        evidences, probe_failures = _collect(config)
+    except (ConfigError, SigningError, ValueError) as exc:
         # ValueError covers the watermark config loader, which validates a
         # user-supplied path — a wrong path is a configuration mistake and
         # deserves a sentence, not a traceback.
         err_console.print(f"[bold red]error:[/] {exc}")
         raise typer.Exit(code=2) from exc
 
-    findings = evaluate(rulepack, evidences, pattern_sets, watermark)
+    findings = sorted(
+        evaluate(rulepack, evidences, pattern_sets, watermark) + probe_failures,
+        key=lambda f: (f.rule_id, f.probe_id),
+    )
     _render(findings, config.target.name, rulepack)
 
     if json_out is not None:
@@ -377,3 +397,10 @@ def keygen(
     console.print("  [cyan]MARKPROOF_SIGNING_KEY[/cyan]. Share the public key freely —")
     console.print("  anyone verifying a report needs it.")
     console.print()
+
+
+if __name__ == "__main__":  # pragma: no cover - module execution entry point
+    # `python -m markproof.cli` has to work, not just the installed console
+    # script: CI images, containers and one-off debugging all reach for it, and
+    # without this the module runs and exits 0 having done nothing at all.
+    app()

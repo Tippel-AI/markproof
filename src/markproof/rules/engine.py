@@ -42,12 +42,14 @@ from markproof.rules.schema import (
 )
 
 __all__ = [
+    "OPERATIONAL_RULE_ID",
     "ConfigurationRequiredError",
     "Finding",
     "Result",
     "UnsupportedCheckError",
     "evaluate",
     "exit_code_for",
+    "probe_failure_finding",
 ]
 
 
@@ -111,6 +113,35 @@ _INCONCLUSIVE = {DisclosureOutcome.NEAR_MISS, DisclosureOutcome.NO_EVIDENCE}
 #: C2PA outcomes that describe a problem with the evidence rather than with the
 #: asset. An unreadable download says nothing about compliance, so it warns.
 _C2PA_INCONCLUSIVE = {C2paOutcome.UNREADABLE}
+
+
+#: Rule id for operational findings — a probe that could not be performed.
+#: Reserved here rather than in a rulepack: it describes the run, not an
+#: obligation, and it must exist even when the rulepack is silent about it.
+OPERATIONAL_RULE_ID = "MPF-X-001"
+
+
+def probe_failure_finding(probe_id: str, reason: str) -> Finding:
+    """A probe that could not be performed at all.
+
+    This is a FAIL, not a skip. "The endpoint was unreachable" and "the endpoint
+    is compliant" must never look alike in a report: a pipeline that goes green
+    because nothing could be checked is the worst outcome this tool has.
+
+    It is also why the run still writes a report — evidence that the check was
+    attempted and why it did not produce a verdict is more useful than no file
+    at all.
+    """
+    return Finding(
+        rule_id=OPERATIONAL_RULE_ID,
+        title="Probe could not be performed",
+        article="—",
+        guideline_ref=None,
+        probe_id=probe_id,
+        result=Result.FAIL,
+        message=reason,
+        detail={"outcome": "probe_error"},
+    )
 
 
 def evaluate(
