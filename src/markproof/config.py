@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from ruamel.yaml import YAML
@@ -27,6 +27,8 @@ __all__ = [
     "ConfigError",
     "HttpChatProbeConfig",
     "MarkproofConfig",
+    "MediaProbeConfig",
+    "ProbeConfig",
     "ReportConfig",
     "TargetConfig",
     "load_config",
@@ -117,13 +119,56 @@ class HttpChatProbeConfig(BaseModel):
         return self
 
 
+class MediaProbeConfig(BaseModel):
+    """An image/media generation endpoint to probe."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str = Field(min_length=1)
+    type: Literal["media"]
+    url: str = Field(min_length=1)
+    lang: str = "de"
+    model: str = "dall-e-3"
+    prompt: str = "Ein einfaches Testbild."
+    prompt_id: str = "media-generation"
+    size: str | None = None
+    response_format: Literal["url", "b64_json"] = "url"
+    expect_media_type: str | None = None
+    auth: AuthConfig | None = None
+    timeout_seconds: float = Field(default=60.0, gt=0, le=300)
+    """Generation is slower than chat, so the default timeout is longer."""
+
+    @property
+    def probe_kind(self) -> ProbeKind:
+        return ProbeKind.MEDIA
+
+    @field_validator("url")
+    @classmethod
+    def _http_url(cls, v: str) -> str:
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("url must start with http:// or https://")
+        return v
+
+    @field_validator("lang")
+    @classmethod
+    def _supported_lang(cls, v: str) -> str:
+        if v not in SUPPORTED_LANGS:
+            raise ValueError(f"lang {v!r} is not supported (have: {', '.join(SUPPORTED_LANGS)})")
+        return v
+
+
+#: A probe entry in the config. Discriminated on ``type`` so an unknown probe
+#: kind is a loud config error rather than a silently ignored block.
+ProbeConfig = Annotated[HttpChatProbeConfig | MediaProbeConfig, Field(discriminator="type")]
+
+
 class TargetConfig(BaseModel):
     """The system under test."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     name: str = Field(min_length=1)
-    probes: tuple[HttpChatProbeConfig, ...] = Field(min_length=1)
+    probes: tuple[ProbeConfig, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _unique_probe_ids(self) -> TargetConfig:

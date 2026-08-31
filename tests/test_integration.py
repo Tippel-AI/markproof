@@ -18,9 +18,9 @@ from pathlib import Path
 import pytest
 
 from markproof.checks.disclosure import PatternSet, load_pattern_set
-from markproof.probes.base import Evidence
+from markproof.probes.base import Artifact, Evidence, Message, Role, Turn, sha256_hex
 from markproof.rules.engine import Result, evaluate, exit_code_for
-from markproof.rules.schema import Rulepack, load_rulepack
+from markproof.rules.schema import ProbeKind, Rulepack, load_rulepack
 from tests.helpers import make_evidence, make_turn
 
 _PKG = Path(__file__).resolve().parent.parent / "src" / "markproof"
@@ -130,3 +130,90 @@ class TestDemoBotModes:
             for _ in range(3)
         ]
         assert all(r == runs[0] for r in runs)
+
+
+class TestMediaRule:
+    """The shipped media rule against the shipped fixtures."""
+
+    @staticmethod
+    def _media_evidence(fixture: str) -> Evidence:
+        """Evidence as the media probe would produce it, from a fixture file."""
+        path = Path(__file__).resolve().parent / "fixtures" / "media" / fixture
+        artifact = Artifact.of(path.read_bytes(), artifact_id=fixture, media_type="image/png")
+        turn = Turn(
+            prompt_id="media-generation",
+            request=[Message(role=Role.USER, content="Ein einfaches Testbild.")],
+            response=Message(role=Role.ASSISTANT, content="1 asset(s)"),
+            response_sha256=sha256_hex("1 asset(s)"),
+            status_code=200,
+            artifacts=(artifact,),
+        )
+        return Evidence(
+            probe_id="images",
+            probe_kind=ProbeKind.MEDIA,
+            target_name="demo-bot",
+            lang="de",
+            turns=(turn,),
+        )
+
+    def test_correctly_marked_media_passes(
+        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+    ) -> None:
+        findings = evaluate(
+            shipped_rulepack, [self._media_evidence("signed-valid.png")], shipped_patterns
+        )
+        assert [f.rule_id for f in findings] == ["MPF-M-001"]
+        assert findings[0].result is Result.PASS
+
+    def test_stripped_manifest_fails(
+        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+    ) -> None:
+        """The CDN-stripped case — the most common real-world failure."""
+        findings = evaluate(
+            shipped_rulepack, [self._media_evidence("unsigned.png")], shipped_patterns
+        )
+        assert findings[0].result is Result.FAIL
+        assert findings[0].detail["outcome"] == "manifest_missing"
+
+    def test_signed_but_not_ai_marked_fails(
+        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+    ) -> None:
+        """Correctly signed is not the same as marked as AI-generated."""
+        findings = evaluate(
+            shipped_rulepack, [self._media_evidence("signed-wrong-type.png")], shipped_patterns
+        )
+        assert findings[0].result is Result.FAIL
+        assert findings[0].detail["outcome"] == "wrong_source_type"
+        assert findings[0].detail["declared_source_types"] == ["algorithmicMedia"]
+
+    def test_tampered_media_fails(
+        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+    ) -> None:
+        findings = evaluate(
+            shipped_rulepack, [self._media_evidence("tampered.png")], shipped_patterns
+        )
+        assert findings[0].result is Result.FAIL
+        assert findings[0].detail["outcome"] == "invalid"
+
+    def test_chat_and_media_rules_do_not_bleed_into_each_other(
+        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+    ) -> None:
+        """Each rule applies to its own probe kind and no other."""
+        findings = evaluate(
+            shipped_rulepack,
+            [_evidence_from(_PASS_REPLIES), self._media_evidence("unsigned.png")],
+            shipped_patterns,
+        )
+        by_probe = {
+            f.probe_id: {f2.rule_id for f2 in findings if f2.probe_id == f.probe_id}
+            for f in findings
+        }
+        assert by_probe["chat"] == {"MPF-D-001", "MPF-D-003"}
+        assert by_probe["images"] == {"MPF-M-001"}
+
+    def test_evidence_hash_ties_the_finding_to_the_asset(
+        self, shipped_rulepack: Rulepack, shipped_patterns: dict[str, PatternSet]
+    ) -> None:
+        evidence = self._media_evidence("signed-valid.png")
+        findings = evaluate(shipped_rulepack, [evidence], shipped_patterns)
+        assert findings[0].evidence_sha256 == (evidence.turns[0].artifacts[0].sha256,)

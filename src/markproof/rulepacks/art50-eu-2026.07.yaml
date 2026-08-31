@@ -114,6 +114,34 @@ rules:
       min_matches: 1
     severity: fail
 
+  # ---------------------------------------------------------------------------
+  # MPF-M-001 — the marking rule. Presence and validity are what any C2PA tool
+  # checks; the source type is what Article 50(2) is actually about, and what
+  # separates "correctly signed" from "marked as AI-generated".
+  # ---------------------------------------------------------------------------
+  - id: MPF-M-001
+    title: "Delivered media carry a valid manifest marking them as AI-generated"
+    article: "Art. 50(2)"
+    guideline_ref: "Guidelines C(2026) 5054, §4; Code of Practice, Commitment 2"
+    rationale: >-
+      Providers of systems generating synthetic image, audio or video content
+      must mark their output in a machine-readable way and make it detectable as
+      artificially generated or manipulated. C2PA is the provenance format the
+      Code of Practice names for this purpose. The check therefore asks three
+      questions of what the endpoint actually delivered: is a manifest embedded,
+      does it still validate against the bytes, and does it declare a source
+      type that means AI involvement. An asset that fails only the third is
+      correctly signed and not marked in the sense the Article requires.
+    applies_to: [media]
+    check:
+      type: c2pa-verify
+      accept_source_types:
+        - trainedAlgorithmicMedia
+        - compositeWithTrainedAlgorithmicMedia
+      trust:
+        allow_self_signed: true
+    severity: fail
+
 # Reserved, not yet implementable — see docs/RULES_SOURCES.md §6:
 #   MPF-D-004  AI agents disclose on whose behalf they act (para 31).
 #              Blocked: needs a second, principal-identity pattern file.

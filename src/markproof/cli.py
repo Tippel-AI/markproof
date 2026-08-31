@@ -27,9 +27,10 @@ from rich.table import Table
 
 from markproof import __version__
 from markproof.checks.disclosure import PatternSet, load_pattern_set
-from markproof.config import ConfigError, MarkproofConfig, load_config
+from markproof.config import ConfigError, MarkproofConfig, MediaProbeConfig, load_config
 from markproof.probes.base import Evidence, ProbeError
 from markproof.probes.http_chat import HttpChatProbe
+from markproof.probes.media import MediaProbe
 from markproof.rules.engine import Finding, Result, evaluate, exit_code_for
 from markproof.rules.schema import Rulepack, load_rulepack
 
@@ -108,7 +109,10 @@ def _collect(config: MarkproofConfig) -> list[Evidence]:
     evidences: list[Evidence] = []
     for probe_config in config.target.probes:
         console.print(f"  probing [cyan]{probe_config.id}[/cyan] → {probe_config.url}")
-        evidences.append(HttpChatProbe(probe_config).collect())
+        if isinstance(probe_config, MediaProbeConfig):
+            evidences.append(MediaProbe(probe_config).collect())
+        else:
+            evidences.append(HttpChatProbe(probe_config).collect())
     return evidences
 
 

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
 # SPDX-License-Identifier: Apache-2.0
-"""demo-bot — a deliberately half-conformant OpenAI-compatible chat endpoint.
+"""demo-bot — a deliberately half-conformant OpenAI-compatible endpoint.
 
 This is markproof's own test target: the endpoint the integration tests probe,
 the one in the README GIF, and the one the dogfood Action runs against. It is
@@ -8,18 +8,35 @@ not a model server. Every answer is a pure function of the request, so the same
 request always produces byte-identical output — the determinism gate depends on
 that.
 
-Two behaviours, selected by ``DEMO_MODE``:
+Behaviour is selected by ``DEMO_MODE``:
 
 ``pass`` (default)
     The first assistant turn opens with an explicit AI disclosure, later turns
     carry a short standing notice, and the direct question ("Bist du ein
     Mensch?") is answered with a denial plus an AI statement. This is what
-    Art. 50(1) asks for.
+    Art. 50(1) asks for. Generated images carry a valid C2PA manifest whose
+    action declares ``digitalSourceType = trainedAlgorithmicMedia``, which is
+    what Art. 50(2) asks for.
 
 ``fail``
     No disclosure anywhere, and the direct question gets the evasive
     non-answer ("Ich bin hier, um Ihnen zu helfen.") — the exact behaviour the
-    disclosure check has to catch.
+    disclosure check has to catch. Generated images carry no manifest at all:
+    the common real failure, where a CDN or an image pipeline re-encoded the
+    asset and dropped the C2PA chunk somewhere between the model and the user.
+
+``wrongtype``
+    A media-only variant. The chat side is identical to ``pass``; the image
+    endpoint serves an asset whose manifest is present and cryptographically
+    valid but whose action claims ``algorithmicMedia`` — algorithmically
+    produced, but *not* by a trained model. It passes every "is this signed?"
+    check and still misses the Art. 50(2) obligation, which is the case only
+    an assertion-level check catches.
+
+Images are served from ``media/``, signed once offline by
+``media/make_fixtures.py``. Signing per request would put a fresh ECDSA nonce
+and a fresh signing time in every response, so the same request would never
+return the same bytes twice.
 
 Nothing here is legal advice or a reference implementation of a compliant
 assistant; the wording is demo copy chosen to be unambiguous for the checks.
@@ -32,19 +49,23 @@ import json
 import os
 import re
 import unicodedata
+from base64 import b64encode
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import cache
+from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = ["app"]
 
 Language = Literal["de", "en"]
-DemoMode = Literal["pass", "fail"]
+DemoMode = Literal["pass", "fail", "wrongtype"]
+DEMO_MODES: tuple[DemoMode, ...] = ("pass", "fail", "wrongtype")
 
 # 2026-01-01T00:00:00Z. A fixed default, never time.time(): a moving `created`
 # would break the byte-identical-report gate (DEVELOPMENT_PLAN.md §7).
@@ -161,6 +182,7 @@ class Settings:
 
     mode: DemoMode
     created: int
+    public_base_url: str | None
 
 
 def _parse_created(raw: str) -> int:
@@ -186,6 +208,14 @@ def _parse_created(raw: str) -> int:
         ) from exc
 
 
+def _parse_base_url(raw: str) -> str:
+    """Parse ``DEMO_PUBLIC_BASE_URL`` — the origin image URLs are built on."""
+    value = raw.strip().rstrip("/")
+    if not value.startswith(("http://", "https://")):
+        raise ValueError(f"DEMO_PUBLIC_BASE_URL must be an http(s) URL, got {raw!r}")
+    return value
+
+
 def load_settings() -> Settings:
     """Read and validate the environment. Raises ``ValueError`` on bad input.
 
@@ -193,15 +223,65 @@ def load_settings() -> Settings:
     mode with ``monkeypatch.setenv`` without rebuilding the app.
     """
     mode = os.environ.get("DEMO_MODE", "pass").strip().lower()
-    if mode not in ("pass", "fail"):
-        raise ValueError(f"DEMO_MODE must be 'pass' or 'fail', got {mode!r}")
+    if mode not in DEMO_MODES:
+        allowed = ", ".join(repr(name) for name in DEMO_MODES)
+        raise ValueError(f"DEMO_MODE must be one of {allowed}, got {mode!r}")
     raw_created = os.environ.get("DEMO_FIXED_TIME")
     created = _parse_created(raw_created) if raw_created else DEFAULT_CREATED
-    return Settings(mode=mode, created=created)
+    raw_base_url = os.environ.get("DEMO_PUBLIC_BASE_URL")
+    base_url = _parse_base_url(raw_base_url) if raw_base_url else None
+    return Settings(mode=mode, created=created, public_base_url=base_url)
 
 
 # --------------------------------------------------------------------------
-# Wire format (OpenAI chat completions, the subset the probe uses)
+# Media fixtures
+#
+# The image endpoint hands out files that were signed once, offline, by
+# media/make_fixtures.py — see that script for how they are built and why
+# every pixel in them is our own production. Signing at request time would
+# mean a fresh ECDSA nonce and a fresh signing time per response: the same
+# request would never return the same bytes twice, and the determinism gate
+# would be measuring the random number generator instead of the endpoint.
+# --------------------------------------------------------------------------
+MEDIA_DIR = Path(__file__).resolve().parent / "media"
+IMAGE_MEDIA_TYPE = "image/png"
+
+#: The fixtures are pre-rendered at this size; a `size` in the request cannot
+#: change it, because changing it would mean re-rendering and re-signing.
+IMAGE_SIZE = "512x512"
+
+#: Which asset a mode hands out. All three stay reachable by name under
+#: /media — the mode decides what the *generation* endpoint points at, not
+#: what the download endpoint will serve.
+MEDIA_BY_MODE: dict[DemoMode, str] = {
+    "pass": "demo-signed.png",
+    "fail": "demo-unsigned.png",
+    "wrongtype": "demo-wrongtype.png",
+}
+
+
+@cache
+def load_media() -> dict[str, bytes]:
+    """Read the fixtures once, on first use. Cached: the bytes never change.
+
+    A missing file raises rather than 404s at request time — a demo bot
+    without its assets is not a usable target, and ``lifespan`` calls this so
+    the complaint lands at startup next to the other environment checks.
+    """
+    assets: dict[str, bytes] = {}
+    for name in MEDIA_BY_MODE.values():
+        path = MEDIA_DIR / name
+        if not path.is_file():
+            raise ValueError(
+                f"missing media fixture {path} — regenerate the assets with "
+                f"`python {MEDIA_DIR.name}/make_fixtures.py`"
+            )
+        assets[name] = path.read_bytes()
+    return assets
+
+
+# --------------------------------------------------------------------------
+# Wire format (OpenAI chat completions and images, the subset the probes use)
 # --------------------------------------------------------------------------
 class ChatMessage(BaseModel):
     """One message in the conversation."""
@@ -246,6 +326,37 @@ class ChatCompletionResponse(BaseModel):
     model: str
     choices: list[Choice]
     usage: Usage
+
+
+class ImageGenerationRequest(BaseModel):
+    """Request body for the images endpoint, in the OpenAI images shape."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    model: str = DEFAULT_MODEL
+    prompt: str = Field(min_length=1)
+    n: int = Field(default=1, ge=1, le=10)
+    #: Accepted and ignored. The one asset per mode is pre-rendered at
+    #: ``IMAGE_SIZE``; honouring another size would mean rendering and signing
+    #: per request, which is exactly what determinism rules out here.
+    size: str = IMAGE_SIZE
+    #: Both delivery paths exist because markproof has to handle both: an
+    #: asset behind a URL and one inlined in the JSON body.
+    response_format: Literal["url", "b64_json"] = "url"
+
+
+class ImageDatum(BaseModel):
+    """One generated image: a URL or the bytes inline, never both."""
+
+    url: str | None = None
+    b64_json: str | None = None
+
+
+class ImageGenerationResponse(BaseModel):
+    """Response body in the OpenAI images shape."""
+
+    created: int
+    data: list[ImageDatum]
 
 
 class HealthResponse(BaseModel):
@@ -321,6 +432,9 @@ def build_answer(request: ChatCompletionRequest, mode: DemoMode) -> str:
         # answered. This is the non-conformant branch, on purpose.
         return copy.identity_fail if identity else copy.generic_fail
 
+    # ``wrongtype`` lands here with ``pass``: its defect is in the manifest of
+    # the image it serves, and a mode that broke the chat too would stop
+    # isolating that defect.
     body = copy.identity_pass if identity else copy.generic_pass
     if is_first_turn(request.messages):
         return f"{copy.disclosure}\n\n{body}"
@@ -353,13 +467,14 @@ def completion_id(request: ChatCompletionRequest, mode: DemoMode, answer: str) -
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Fail loudly at boot on a bad environment, not silently per request."""
     load_settings()
+    load_media()
     yield
 
 
 app = FastAPI(
     title="markproof demo-bot",
     version="0.1.0",
-    summary="Deterministic, deliberately half-conformant chat endpoint for markproof.",
+    summary="Deterministic, deliberately half-conformant chat and image endpoint for markproof.",
     lifespan=lifespan,
 )
 
@@ -369,6 +484,27 @@ def _settings_or_500() -> Settings:
         return load_settings()
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _media_or_500() -> dict[str, bytes]:
+    try:
+        return load_media()
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def media_url(http_request: Request, settings: Settings, name: str) -> str:
+    """Absolute URL of a stored asset.
+
+    Built from the origin the caller reached us on, which is what a probe
+    behind a port mapping needs. ``DEMO_PUBLIC_BASE_URL`` pins it instead when
+    the address the outside world uses is not the bound one — a container, a
+    tunnel, a reverse proxy — or when a test wants a response that does not
+    move with the Host header.
+    """
+    if settings.public_base_url:
+        return f"{settings.public_base_url}/media/{name}"
+    return str(http_request.url_for("get_media", name=name))
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -403,6 +539,56 @@ def chat_completions(request: ChatCompletionRequest) -> ChatCompletionResponse:
             total_tokens=prompt_tokens + completion_tokens,
         ),
     )
+
+
+@app.post(
+    "/v1/images/generations",
+    response_model=ImageGenerationResponse,
+    response_model_exclude_none=True,
+)
+def image_generations(
+    request: ImageGenerationRequest, http_request: Request
+) -> ImageGenerationResponse:
+    """OpenAI-compatible image generation, served from the stored fixtures.
+
+    The prompt is read and discarded: there is no model here, and the whole
+    point of the endpoint is that the mode — not the prompt — decides what
+    provenance the returned asset carries.
+    """
+    settings = _settings_or_500()
+    assets = _media_or_500()
+    name = MEDIA_BY_MODE[settings.mode]
+
+    if request.response_format == "b64_json":
+        datum = ImageDatum(b64_json=b64encode(assets[name]).decode("ascii"))
+    else:
+        datum = ImageDatum(url=media_url(http_request, settings, name))
+
+    # One asset per mode, so `n` repeats it rather than varying it. A demo
+    # that returned n different images would have to generate them.
+    return ImageGenerationResponse(created=settings.created, data=[datum] * request.n)
+
+
+@app.get(
+    "/media/{name}",
+    response_class=Response,
+    responses={200: {"content": {IMAGE_MEDIA_TYPE: {}}, "description": "The stored asset."}},
+)
+def get_media(name: str) -> Response:
+    """Serve one stored asset, byte for byte.
+
+    The name is looked up in a dictionary of assets read at startup, never
+    joined onto a filesystem path, so no request can walk out of ``media/``.
+    Bytes go out untouched: re-encoding an image would break the C2PA hash
+    bindings and turn a valid manifest into a tampering finding.
+
+    All assets are reachable here regardless of mode. Only the generation
+    endpoint above switches with ``DEMO_MODE``.
+    """
+    data = _media_or_500().get(name)
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"no such media asset: {name!r}")
+    return Response(content=data, media_type=IMAGE_MEDIA_TYPE)
 
 
 if __name__ == "__main__":

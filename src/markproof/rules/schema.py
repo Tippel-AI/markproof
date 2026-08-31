@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from ruamel.yaml import YAML
 
 __all__ = [
+    "C2paVerifyCheck",
     "Check",
     "DisclosurePatternCheck",
     "ProbeKind",
@@ -30,6 +31,7 @@ __all__ = [
     "Rulepack",
     "Severity",
     "Source",
+    "TrustConfig",
     "load_rulepack",
 ]
 
@@ -110,8 +112,60 @@ class DisclosurePatternCheck(BaseModel):
         return v
 
 
-#: Discriminated union — M2/M3 add ``c2pa-verify`` and ``synthid-detect`` here.
-Check = Annotated[DisclosurePatternCheck, Field(discriminator="type")]
+class TrustConfig(BaseModel):
+    """How far signer trust is evaluated.
+
+    v1 stops at "does the signature verify against the embedded chain".
+    Evaluating a signer against the official Conformance Trust List is v1.1 —
+    stated here rather than implied, so a passing report is not read as more
+    than it is.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    allow_self_signed: bool = True
+
+
+class C2paVerifyCheck(BaseModel):
+    """Verify a C2PA manifest on media the endpoint delivered.
+
+    Presence and validity are what every C2PA tool checks. The part that carries
+    this project is ``require_source_type``: Article 50(2) is about content being
+    marked *as AI-generated*, so a validly signed asset that declares a camera
+    capture is a failure, not a pass.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["c2pa-verify"]
+    accept_source_types: list[str] | None = Field(
+        default_factory=lambda: [
+            "trainedAlgorithmicMedia",
+            "compositeWithTrainedAlgorithmicMedia",
+        ]
+    )
+    """Digital source types that satisfy the marking obligation.
+
+    A list rather than a single value, because Art. 50(2) reaches content that
+    was generated *or manipulated*: a human-authored composite containing
+    AI-generated regions is in scope, and a rulepack that could only name one
+    term would have to decide that silently. Set to ``null`` to accept any
+    source type and check presence and validity alone.
+    """
+
+    require_assertions: list[str] = Field(default_factory=list)
+    trust: TrustConfig = Field(default_factory=TrustConfig)
+    allow_remote_manifests: bool = False
+    """Whether a manifest fetched over the network counts.
+
+    Off by default: a remote manifest that a CDN can drop is exactly the
+    delivery regression this tool exists to catch, and following the URL would
+    also make the check non-deterministic.
+    """
+
+
+#: Discriminated union — M3 adds ``synthid-detect`` here.
+Check = Annotated[DisclosurePatternCheck | C2paVerifyCheck, Field(discriminator="type")]
 
 
 class Rule(BaseModel):
