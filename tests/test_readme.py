@@ -213,3 +213,87 @@ class TestNoOverclaiming:
             assert "emotion" not in table.lower(), (
                 "the rule table advertises emotion recognition, which no rule checks"
             )
+
+
+class TestTheFrontPageMatchesReality:
+    """The README must not promise a state the repository is not in.
+
+    Every one of these guards a mistake that was actually shipped: an install
+    command for a package that was not on PyPI, an action pinned to a tag that did
+    not exist, a link to a sibling repository that was never created, and a console
+    transcript typed by hand rather than captured. Individually small; together they
+    are the first thing a reader tests, and all four failed at once.
+    """
+
+    @staticmethod
+    def _is_prerelease() -> bool:
+        from markproof import __version__
+
+        return any(marker in __version__ for marker in ("dev", "a", "b", "rc"))
+
+    def test_no_pypi_install_before_there_is_a_pypi_release(self) -> None:
+        """`pipx install markproof` must not appear while the version is a pre-release."""
+        if not self._is_prerelease():
+            pytest.skip("released version — the PyPI install line is correct")
+        for command in _commands():
+            assert not re.match(r"^markproof\s*$", command), command
+        text = _readme()
+        assert "pipx install markproof\n" not in text, (
+            "the README offers a PyPI install, but this version is unreleased — "
+            "use `pipx install git+https://github.com/Tippel-AI/markproof`"
+        )
+
+    def test_the_action_is_not_pinned_to_a_tag_that_does_not_exist(self) -> None:
+        if not self._is_prerelease():
+            pytest.skip("released version — a version tag is expected")
+        pinned = re.findall(r"Tippel-AI/markproof/action@(\S+)", _readme())
+        assert pinned, "the README no longer shows how to use the action"
+        for ref in pinned:
+            assert not re.match(r"^v\d", ref), (
+                f"the action example pins {ref}, but no release tag exists yet — use @main"
+            )
+
+    def test_the_readme_links_no_repository_that_does_not_exist(self) -> None:
+        """A dead link in the credibility paragraph costs more than it looks.
+
+        Checked locally rather than over the network: CI must not go red because
+        GitHub is slow. markproof is the only repository under this account, so any
+        other Tippel-AI link is one somebody meant to create and did not.
+        """
+        linked = set(re.findall(r"github\.com/Tippel-AI/([A-Za-z0-9._-]+)", _readme()))
+        assert linked <= {"markproof"}, (
+            f"links to non-existent repositories: {sorted(linked - {'markproof'})}"
+        )
+
+    def test_the_transcript_is_the_reproducible_one(self) -> None:
+        """A reader has to be able to run the thing that produced it."""
+        blocks = re.findall(r"```console\n(.*?)```", _readme(), re.S)
+        assert blocks, "the README no longer shows a console transcript"
+        transcript = "\n".join(blocks)
+        assert "demo-bot" in transcript, (
+            "the transcript should come from examples/demo-bot, which a reader can run"
+        )
+        assert "examples/demo-bot" in _readme(), "the README does not link the demo bot"
+
+    def test_the_transcript_does_not_show_a_report_the_command_cannot_write(self) -> None:
+        """`run` writes a report only when --report-dir is passed."""
+        for block in re.findall(r"```console\n(.*?)```", _readme(), re.S):
+            if "report written to" not in block:
+                continue
+            invocations = [ln for ln in block.splitlines() if "markproof run" in ln]
+            assert invocations, "a transcript shows a report with no run command"
+            assert any("--report-dir" in ln for ln in invocations), (
+                "the transcript shows a written report, but the command shown does not "
+                "pass --report-dir, so no report would be written"
+            )
+
+    def test_the_optional_extras_the_rule_table_needs_are_named(self) -> None:
+        """Three rules drive a browser. A reader must not learn that from a stack trace."""
+        text = _readme()
+        table = text[text.index("| Rule |") : text.index("**No LLM sits")]
+        if "UI" in table or "page" in table:
+            assert "markproof[ui]" in text, "the UI rules need the [ui] extra, unmentioned"
+            assert "playwright install" in text, (
+                "the [ui] extra ships a driver, not a browser — the second command is "
+                "the one that catches people out"
+            )
