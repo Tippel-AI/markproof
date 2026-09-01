@@ -243,10 +243,22 @@ class DocumentProbe:
             manifest = fetch(client, "GET", url, stay_on_origin=True)
         except httpx.HTTPError as exc:
             raise ProbeError(f"{url}: the linked manifest could not be fetched — {exc}") from exc
-        if manifest.status_code >= 400:
+        if manifest.status_code != 200:
+            # Not `>= 400`: a 204 or a 304 carries no manifest either, and treating
+            # an empty body as "the manifest" would hand the checker nothing and
+            # call it a manifest.
             raise ProbeError(
                 f"{url}: the document advertises a manifest that answers HTTP "
                 f"{manifest.status_code}. A dangling provenance link is worse than none: "
                 "it reads as marked and verifies as nothing."
             )
+        if len(manifest.content) > self.config.max_bytes:
+            # The document has a size limit and the manifest did not, so the
+            # cheapest way to exhaust this process was to advertise one.
+            raise ProbeError(
+                f"{url}: the manifest is {len(manifest.content)} bytes, over max_bytes "
+                f"({self.config.max_bytes})"
+            )
+        if not manifest.content:
+            raise ProbeError(f"{url}: the advertised manifest is empty")
         return manifest.content, source

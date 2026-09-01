@@ -86,6 +86,13 @@ def generate_keypair(out_dir: Path) -> tuple[Path, Path]:
     )
 
     fd = os.open(private_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
+    # The mode argument to os.open applies only when the file is *created*. A
+    # pre-existing key file — a previous run under a wider umask, a placeholder
+    # somebody touched — keeps its permissions through O_TRUNC, and the CLI then
+    # prints "(mode 600)" over a key anyone on the machine can read. fchmod on the
+    # open descriptor fixes that without a window in which the path could be
+    # swapped.
+    os.fchmod(fd, stat.S_IRUSR | stat.S_IWUSR)
     with os.fdopen(fd, "wb") as handle:
         handle.write(private_pem)
     public_path.write_bytes(public_pem)

@@ -321,3 +321,31 @@ class TestTheMarkingLimbIsQualified:
 
         stripped = summary.MARKING_LIMB_NOTE.replace("**Article 50(2) has two limbs.** ", "")
         assert stripped == pdf_reportlab.MARKING_LIMB_NOTE
+
+
+class TestKeygenPermissionsSurviveAnExistingFile:
+    """`os.open`'s mode argument applies only on creation.
+
+    A key file left by an earlier run under a wider umask, or a placeholder
+    somebody touched, keeps its permissions through `O_TRUNC` — and the CLI then
+    prints "(mode 600)" over a private key anyone on the machine can read. A claim
+    printed next to a fact that contradicts it is the exact defect class this
+    project exists to find in other people's systems.
+    """
+
+    def test_a_pre_existing_world_readable_file_is_tightened(self, tmp_path: Path) -> None:
+        from markproof.report.sign import generate_keypair
+
+        target = tmp_path / "markproof-signing-key.pem"
+        target.write_text("placeholder", encoding="utf-8")
+        target.chmod(0o644)
+
+        private_path, _ = generate_keypair(tmp_path)
+        mode = private_path.stat().st_mode
+        assert not mode & (stat.S_IRWXG | stat.S_IRWXO), oct(mode & 0o777)
+
+    def test_a_fresh_file_is_owner_only(self, tmp_path: Path) -> None:
+        from markproof.report.sign import generate_keypair
+
+        private_path, _ = generate_keypair(tmp_path)
+        assert not private_path.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO)
