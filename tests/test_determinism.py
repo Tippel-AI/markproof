@@ -193,6 +193,23 @@ class TestTheGoldensCoverWhatMatters:
         assert any("SKIP" in v for v in verdicts.values()), verdicts
         assert any("WARN" in v for v in verdicts.values()), verdicts
 
+    def test_every_shipped_rule_appears_in_some_golden(self) -> None:
+        """A rule no golden exercises is a rule the gate cannot protect.
+
+        The gate asserted that all four verdict values appear somewhere, which
+        says nothing about coverage: eleven cases could all exercise the same two
+        rules. MPF-M-002 shipped and was in the goldens by luck of the case that
+        was written for it, not by a check.
+        """
+        from markproof.rules.schema import load_rulepack
+
+        packaged = Path(__file__).resolve().parent.parent / "src" / "markproof" / "rulepacks"
+        shipped = {r.id for r in load_rulepack(packaged / "art50-eu-2026.07.yaml").rules}
+        exercised = {
+            f["rule_id"] for case in _cases() for f in json.loads(_report_bytes(case))["findings"]
+        }
+        assert shipped <= exercised, f"no golden exercises: {sorted(shipped - exercised)}"
+
     def test_no_model_in_the_report_graph_is_required_but_nullable(self) -> None:
         """The shape that made reports unreadable, guarded structurally.
 

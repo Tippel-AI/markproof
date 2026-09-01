@@ -596,3 +596,62 @@ class TestTheTerminalPrintsWhatItMeans:
         # The shipped attribution contains "(EU) 2024/1689" and bracketed clause
         # references; none of it may vanish.
         assert "2024/1689" in result.output
+
+
+class TestNoOptionalExtraEndsInATraceback:
+    """The README's own demo, on a base install, ended in a stack trace.
+
+    #22 moved evaluation inside the guarded block and listed the exceptions it
+    knew about. `SynthIdUnavailableError` was not among them, so the fix did not
+    reach the one case a stranger actually hits: the demo config declares
+    `text_marking: synthid`, and a base install has no detector.
+
+    Exit 1 is this tool's word for "a rule failed". Answering "is my endpoint
+    compliant?" with a stack frame and that exit code is the worst possible first
+    contact, and it survived the previous round because nothing tested it.
+    """
+
+    @respx.mock
+    def test_a_missing_detector_is_a_sentence_and_exit_two(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from markproof.checks import synthid
+
+        def _absent(*_: object, **__: object) -> None:
+            raise synthid.SynthIdUnavailableError(
+                "text marking needs the optional extra: pip install 'markproof[synthid]'"
+            )
+
+        monkeypatch.setattr(synthid, "detect_watermark", _absent)
+        monkeypatch.setattr("markproof.rules.engine.detect_watermark", _absent)
+
+        watermark = tmp_path / "wm.json"
+        watermark.write_text(
+            '{"ngram_len": 5, "keys": [1, 2, 3], "tokenizer": "t"}', encoding="utf-8"
+        )
+        respx.post(_ENDPOINT).mock(return_value=_reply(_DISCLOSED * 12))
+        config = _config(
+            tmp_path,
+            extra=f"text_marking:\n  method: synthid\n  watermark_config: {watermark}\n",
+        )
+        result = RUNNER.invoke(app, ["run", "-c", str(config)])
+
+        assert "Traceback" not in result.output, result.output
+        assert result.exit_code == 2, (
+            f"a run that could not happen must not exit 1: {result.output}"
+        )
+        assert "markproof[synthid]" in result.output, "the install command was mangled"
+
+    def test_every_optional_error_shares_a_base_the_cli_catches(self) -> None:
+        """Named so the next optional dependency cannot reintroduce this."""
+        from markproof.checks.synthid import SynthIdUnavailableError
+        from markproof.optional import OptionalDependencyError
+        from markproof.report.pdf_reportlab import ReportlabUnavailableError
+        from markproof.report.pdf_weasy import WeasyPrintUnavailableError
+
+        for error in (
+            SynthIdUnavailableError,
+            ReportlabUnavailableError,
+            WeasyPrintUnavailableError,
+        ):
+            assert issubclass(error, OptionalDependencyError), error.__name__

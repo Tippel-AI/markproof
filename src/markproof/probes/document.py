@@ -109,9 +109,17 @@ def manifest_link_from_header(value: str) -> str | None:
     return None
 
 
+#: HTML comments and script bodies, removed before the element scan. A `<link>`
+#: written inside either is not a declaration the browser acts on, and taking one
+#: as the document's manifest pointer lets anything that can put text on a page —
+#: a comment, a code sample, a user-supplied string — choose the bytes that decide
+#: the verdict.
+_INERT = re.compile(r"<!--.*?-->|<script\b[^>]*>.*?</script>", re.IGNORECASE | re.DOTALL)
+
+
 def manifest_link_from_html(body: str) -> str | None:
     """The manifest URL advertised by a ``<link>`` element, if there is one."""
-    for element in _LINK_ELEMENT.finditer(body):
+    for element in _LINK_ELEMENT.finditer(_INERT.sub("", body)):
         attrs = element.group("attrs")
         rel = _attr_value(_REL_ATTR.search(attrs))
         if rel is None or _REL not in _rel_names(rel):

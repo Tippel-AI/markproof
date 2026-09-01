@@ -84,6 +84,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Final
 
+from markproof.optional import OptionalDependencyError
+
 __all__ = [
     "DISCLAIMER",
     "RESULT_ORDER",
@@ -97,7 +99,7 @@ __all__ = [
 ]
 
 
-class ReportlabUnavailableError(RuntimeError):
+class ReportlabUnavailableError(OptionalDependencyError):
     """The ``[pdf]`` extra is not installed.
 
     Raised instead of an ``ImportError`` from three frames deep, so the CLI can

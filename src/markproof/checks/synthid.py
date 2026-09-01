@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from markproof.optional import OptionalDependencyError
 from markproof.rules.schema import SynthIdDetectCheck
 
 if TYPE_CHECKING:  # pragma: no cover - import cost only matters at runtime
@@ -53,7 +54,7 @@ __all__ = [
 ]
 
 
-class SynthIdUnavailableError(RuntimeError):
+class SynthIdUnavailableError(OptionalDependencyError):
     """The optional detection stack is not installed.
 
     ``transformers`` and ``torch`` are a heavy extra, so a rulepack asking for

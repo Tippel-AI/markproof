@@ -37,7 +37,7 @@ from markproof.checks.synthid import (
     WatermarkConfig,
     detect_watermark,
 )
-from markproof.probes.base import Evidence
+from markproof.probes.base import Evidence, sha256_hex
 from markproof.rules.schema import (
     Applicability,
     C2paVerifyCheck,
@@ -475,6 +475,12 @@ def _finding_from_c2pa(rule: Rule, evidence: Evidence, check: C2paVerifyCheck) -
         "outcome": "verified" if not failed else failed[0].outcome.value,
         "assets": sorted(r.artifact_id for r in results),
     }
+    signers = sorted({r.signer for r in results if r.signer})
+    if signers:
+        # "Validly signed" is only half an answer without "by whom": the rulepack
+        # allows self-signed certificates, so a passing manifest may carry a
+        # signer nobody has ever heard of. Naming it lets a reader decide.
+        detail["signers"] = signers
     if failed:
         detail["failed_assets"] = sorted(r.artifact_id for r in failed)
         types = sorted({r.source_type for r in failed if r.source_type})
@@ -482,6 +488,29 @@ def _finding_from_c2pa(rule: Rule, evidence: Evidence, check: C2paVerifyCheck) -
             detail["declared_source_types"] = types
 
     hashes = tuple(a.sha256 for turn in evidence.turns for a in turn.artifacts)
+    # A sidecar manifest decides the verdict as much as the asset does, and it was
+    # recorded nowhere: a reader could re-fetch the document, find the digest
+    # matching, and still not know which manifest produced the answer.
+    sidecars = sorted(
+        {
+            sha256_hex(a.sidecar_manifest)
+            for turn in evidence.turns
+            for a in turn.artifacts
+            if a.sidecar_manifest is not None
+        }
+    )
+    if sidecars:
+        detail["sidecar_manifests_sha256"] = sidecars
+        sources = sorted(
+            {
+                a.sidecar_source
+                for turn in evidence.turns
+                for a in turn.artifacts
+                if a.sidecar_source
+            }
+        )
+        if sources:
+            detail["sidecar_source"] = ", ".join(sources)
 
     if not failed:
         noun = "asset" if len(results) == 1 else "assets"
