@@ -5,10 +5,11 @@
 # gate. Deliberately runs WITHOUT the optional extras — the default path has to
 # stay installable with zero system dependencies (Auflage A2).
 #
-# Siblings that already exist: dogfood.yml (the demo target, badge included) and
-# release.yml (tag -> PyPI via Trusted Publishing). Still to come: extras.yml
-# (playwright + synthid, nightly) and canary.yml (unpinned c2pa-python and
-# transformers, nightly). The SPDX-header lint needs no workflow of its own — it
+# Siblings: dogfood.yml (the demo target, badge included), release.yml (tag ->
+# PyPI via Trusted Publishing) and extras.yml, which runs the ui and synthid
+# markers this file deliberately skips — nightly, and on any pull request touching
+# the code they are the only cover for. Still to come: canary.yml (unpinned
+# c2pa-python and transformers, nightly). The SPDX-header lint needs no workflow of its own — it
 # runs in the lint job below, out of .pre-commit-config.yaml. There is no
 # generated dependency-licence inventory and NOTICE no longer promises one:
 # nothing here is vendored, so the direct-dependency list in NOTICE section 4 is
