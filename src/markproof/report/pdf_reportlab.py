@@ -222,10 +222,30 @@ class FindingView:
     detail: tuple[tuple[str, str], ...] = ()
     evidence_sha256: tuple[str, ...] = ()
 
+    obligation: str = ""
+    """Which Article 50 duty this finding serves, when the report records one.
+
+    Defaulted, like everything else this module reads: it renders whatever shape
+    it is handed, including reports written by a build that had no such field.
+    """
+
     @property
     def palette(self) -> tuple[str, str]:
         """Ink and wash for this result; unknown labels stay neutral grey."""
         return RESULT_PALETTE.get(self.result, _UNKNOWN_PALETTE)
+
+
+#: The qualification a passing marking rule needs, without its Markdown emphasis —
+#: this page renders its own. Kept beside the summary's wording deliberately: the
+#: two artefacts state the same limit, and a reader comparing them should find no
+#: difference to interpret.
+MARKING_LIMB_NOTE = (
+    "The marking checks above measure whether the mark arrived, against your own "
+    "configuration. They do not measure whether a third party can detect it — that "
+    "is a property of the ecosystem, not of your endpoint, and no probe run against "
+    "your system can establish it. A passing marking check is not, on its own, "
+    "Article 50(2) compliance."
+)
 
 
 def _join_names(names: list[str]) -> str:
@@ -257,6 +277,13 @@ class ReportView:
     rulepack_version: str
     generated_at: str
     markproof_version: str
+    marking_passed: bool = False
+    """Whether any Article 50(2) marking rule passed.
+
+    Drives the two-limbs qualification. This page is what somebody hands an
+    auditor, so a reader concluding "marking: PASS, therefore Article 50(2)
+    satisfied" would do it here rather than anywhere else."""
+
     findings: tuple[FindingView, ...] = ()
     declared_scope: tuple[tuple[str, bool], ...] = ()
     """Obligations the target declared, and whether each was said to apply.
@@ -323,6 +350,7 @@ def _finding_view(finding: Any) -> FindingView:
         rule_id=_string(finding, "rule_id", default="(unknown rule)"),
         title=_string(finding, "title"),
         article=_string(finding, "article"),
+        obligation=_string(finding, "obligation"),
         guideline_ref=_string(finding, "guideline_ref"),
         probe_id=_string(finding, "probe_id"),
         result=_string(finding, "result", default="SKIP").upper(),
@@ -406,6 +434,9 @@ def report_view(report: Any) -> ReportView:
             default="(unknown)",
         ),
         findings=findings,
+        marking_passed=any(
+            f.result.upper() == "PASS" and "marking" in (f.obligation or "") for f in findings
+        ),
         declared_scope=_declared_scope(report),
         provenance=provenance,
         attribution=_string(report, "rulepack_attribution", "attribution", "rulepack.attribution"),
@@ -799,6 +830,15 @@ def _story(rl: Any, view: ReportView, width: float) -> list[Any]:
         story.append(
             rl.Paragraph(
                 f"<b>Declared scope.</b> {_esc(' '.join(sentences))}",
+                styles["body"],
+            )
+        )
+
+    if view.marking_passed:
+        story.append(rl.Spacer(1, 10))
+        story.append(
+            rl.Paragraph(
+                "<b>Article 50(2) has two limbs.</b> " + _esc(MARKING_LIMB_NOTE),
                 styles["body"],
             )
         )

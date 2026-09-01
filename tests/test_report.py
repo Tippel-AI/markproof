@@ -28,7 +28,7 @@ from markproof.report.sign import (
 )
 from markproof.report.summary import render_summary
 from markproof.rules.engine import Finding, Result
-from markproof.rules.schema import Rulepack
+from markproof.rules.schema import Obligation, Rulepack, load_rulepack
 
 _TIMESTAMP = "2026-08-31T12:00:00+00:00"
 
@@ -240,3 +240,84 @@ class TestSummary:
 
     def test_disclaimer_is_always_present(self, report: Report) -> None:
         assert "not legal advice" in render_summary(report)
+
+
+class TestTheMarkingLimbIsQualified:
+    """Issue #19: a passing marking rule is a smaller statement than it looks.
+
+    Article 50(2) asks for output to be marked **and** detectable as artificially
+    generated, and the Guidelines are explicit that satisfying one limb does not
+    discharge the other. markproof measures the first against the operator's own
+    configuration. It cannot measure the second — whether a third party without
+    those keys can detect the mark is a property of the ecosystem, not of the
+    endpoint, and no probe run against a system can establish it.
+
+    That gap is live rather than theoretical: text-watermark detection tooling is
+    largely announced rather than shipped, and where it exists it is key-gated. So
+    the qualification belongs next to the verdict, not in a README the reader of a
+    report will never open.
+    """
+
+    @staticmethod
+    def _report(result: Result, obligation: Obligation | None) -> Report:
+        packaged = Path(__file__).resolve().parent.parent / "src" / "markproof" / "rulepacks"
+        finding = Finding(
+            rule_id="MPF-T-001",
+            title="Generated text carries the operator's declared watermark",
+            article="Art. 50(2)",
+            obligation=obligation,
+            guideline_ref=None,
+            probe_id="chat",
+            result=result,
+            message="watermark detected",
+        )
+        return build_report(
+            target="t",
+            rulepack=load_rulepack(packaged / "art50-eu-2026.07.yaml"),
+            findings=[finding],
+            timestamp="2026-09-01T12:00:00+00:00",
+        )
+
+    def test_a_passing_marking_rule_carries_the_qualification(self) -> None:
+        summary = render_summary(self._report(Result.PASS, Obligation.SYNTHETIC_TEXT_MARKING))
+        assert "two limbs" in summary
+        assert "not, on its own, Article 50(2) compliance" in summary
+
+    def test_media_marking_too(self) -> None:
+        summary = render_summary(self._report(Result.PASS, Obligation.SYNTHETIC_MEDIA_MARKING))
+        assert "two limbs" in summary
+
+    def test_a_failing_marking_rule_does_not(self) -> None:
+        """Nobody over-reads a failure, and a note on every run is one people skip."""
+        summary = render_summary(self._report(Result.FAIL, Obligation.SYNTHETIC_TEXT_MARKING))
+        assert "two limbs" not in summary
+
+    def test_a_disclosure_rule_does_not(self) -> None:
+        """Article 50(1) has one limb; qualifying it would be noise."""
+        summary = render_summary(self._report(Result.PASS, Obligation.AI_INTERACTION))
+        assert "two limbs" not in summary
+
+    def test_the_pdf_says_the_same_thing(self) -> None:
+        """The PDF is what gets handed to an auditor, so it is where over-reading happens."""
+        from markproof.report.pdf_reportlab import report_view
+
+        view = report_view(
+            self._report(Result.PASS, Obligation.SYNTHETIC_TEXT_MARKING).model_dump(
+                mode="json", exclude_none=True
+            )
+        )
+        assert view.marking_passed
+
+        clean = report_view(
+            self._report(Result.PASS, Obligation.AI_INTERACTION).model_dump(
+                mode="json", exclude_none=True
+            )
+        )
+        assert not clean.marking_passed
+
+    def test_both_renderers_state_the_same_limit(self) -> None:
+        """A reader comparing the two artefacts must find no difference to interpret."""
+        from markproof.report import pdf_reportlab, summary
+
+        stripped = summary.MARKING_LIMB_NOTE.replace("**Article 50(2) has two limbs.** ", "")
+        assert stripped == pdf_reportlab.MARKING_LIMB_NOTE

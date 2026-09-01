@@ -107,6 +107,24 @@ class Obligation(StrEnum):
     """Art. 50(4) second subparagraph — disclosure for published text informing
     on matters of public interest."""
 
+    @property
+    def is_marking(self) -> bool:
+        """Whether this duty is one of Article 50(2)'s two limbs.
+
+        Article 50(2) asks for output to be marked **and** detectable as
+        artificially generated, and the Commission Guidelines say satisfying one
+        does not discharge the other. markproof measures the first against the
+        operator's own configuration. It cannot measure the second: whether a
+        third party who does not hold those keys can detect the mark is a property
+        of the ecosystem, not of the endpoint under test, and no probe run against
+        a system can establish it.
+
+        So a passing marking rule is a smaller statement than it looks, and the
+        renderers use this to say so next to the verdict — where the reader is,
+        rather than in a README they will never open.
+        """
+        return self in (Obligation.SYNTHETIC_MEDIA_MARKING, Obligation.SYNTHETIC_TEXT_MARKING)
+
 
 class Applicability(RootModel[dict[Obligation, bool]]):
     """The operator's declaration of which obligations bind this target.

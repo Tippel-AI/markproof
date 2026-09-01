@@ -52,6 +52,36 @@ def _verdict_line(report: Report) -> str:
     return f"**All {summary.passed} applicable checks passed.**"
 
 
+#: Printed wherever a marking rule passes. Not a disclaimer in a footer: the risk
+#: is a reader concluding from "MPF-T-001 PASS" that Article 50(2) is satisfied,
+#: so the qualification has to sit where that conclusion is drawn.
+MARKING_LIMB_NOTE = (
+    "**Article 50(2) has two limbs.** The marking checks above measure whether the "
+    "mark arrived, against your own configuration. They do not measure whether a "
+    "third party can detect it — that is a property of the ecosystem, not of your "
+    "endpoint, and no probe run against your system can establish it. A passing "
+    "marking check is not, on its own, Article 50(2) compliance."
+)
+
+
+def _marking_note(report: Report) -> list[str]:
+    """The Article 50(2) qualification, when a marking rule actually passed.
+
+    Only on a pass. A reader whose marking check failed or skipped is not at risk
+    of over-reading it, and a note that appears unconditionally is one more line
+    people learn to skip — the same failure as a warning that fires for every
+    target.
+    """
+    passed = [
+        f
+        for f in report.findings
+        if f.result is Result.PASS and f.obligation is not None and f.obligation.is_marking
+    ]
+    if not passed:
+        return []
+    return ["", MARKING_LIMB_NOTE, ""]
+
+
 def _join(names: list[str]) -> str:
     """Backtick the names and join them so the sentence reads as English."""
     quoted = [f"`{n}`" for n in names]
@@ -151,6 +181,7 @@ def render_summary(report: Report) -> str:
     else:
         lines.append("_No rule in this pack applied to the configured probes._")
 
+    lines.extend(_marking_note(report))
     lines.extend(["", "---", ""])
 
     if report.signature is not None:
