@@ -200,3 +200,78 @@ class TestTheProbesUseIt:
         with pytest.raises(ProbeError, match="different origin"):
             probe.collect()
         assert not elsewhere.calls, "the foreign manifest was fetched anyway"
+
+
+class TestTheResponseBodyDoesNotChooseWhatIsFetched:
+    """The media probe fetches asset URLs the endpoint under test supplies.
+
+    Pointed at `169.254.169.254` — which on every major cloud answers with
+    instance credentials — that is a server-side request forgery made by a
+    process the operator trusts, from inside their network, with a very good
+    payload.
+    """
+
+    @pytest.mark.parametrize(
+        "target",
+        [
+            "http://169.254.169.254/latest/meta-data/",
+            "http://127.0.0.1:8080/admin",
+            "http://10.0.0.5/internal",
+            "http://[::1]/x",
+        ],
+    )
+    @respx.mock
+    def test_an_internal_asset_url_is_refused(self, target: str) -> None:
+        respx.post(f"{_A}/v1/images").mock(
+            return_value=httpx.Response(200, json={"data": [{"url": target}]})
+        )
+        reached = respx.get(target).mock(return_value=httpx.Response(200, content=b"secrets"))
+        probe = MediaProbe(
+            MediaProbeConfig.model_validate(
+                {"id": "images", "type": "media", "url": f"{_A}/v1/images"}
+            )
+        )
+        with pytest.raises(ProbeError, match="internal address"):
+            probe.collect()
+        assert not reached.calls, "the internal address was fetched anyway"
+
+    @respx.mock
+    def test_a_public_asset_url_is_still_fetched(self) -> None:
+        respx.post(f"{_A}/v1/images").mock(
+            return_value=httpx.Response(200, json={"data": [{"url": f"{_A}/a.png"}]})
+        )
+        respx.get(f"{_A}/a.png").mock(
+            return_value=httpx.Response(
+                200, content=b"\x89PNG\r\n\x1a\n", headers={"content-type": "image/png"}
+            )
+        )
+        probe = MediaProbe(
+            MediaProbeConfig.model_validate(
+                {"id": "images", "type": "media", "url": f"{_A}/v1/images"}
+            )
+        )
+        assert probe.collect().turns[0].artifacts
+
+    @respx.mock
+    def test_a_local_target_may_serve_local_assets(self) -> None:
+        """Pointing markproof at a bot on localhost is the documented way to try it.
+
+        Refusing the assets that bot serves would break the demo the README sends
+        people to, so the rule is relative: internal is refused only when the probe
+        target itself is not.
+        """
+        local = "http://127.0.0.1:8099"
+        respx.post(f"{local}/v1/images").mock(
+            return_value=httpx.Response(200, json={"data": [{"url": f"{local}/a.png"}]})
+        )
+        respx.get(f"{local}/a.png").mock(
+            return_value=httpx.Response(
+                200, content=b"\x89PNG\r\n\x1a\n", headers={"content-type": "image/png"}
+            )
+        )
+        probe = MediaProbe(
+            MediaProbeConfig.model_validate(
+                {"id": "images", "type": "media", "url": f"{local}/v1/images"}
+            )
+        )
+        assert probe.collect().turns[0].artifacts

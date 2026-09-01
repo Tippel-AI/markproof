@@ -34,7 +34,7 @@ import httpx
 
 from markproof.probes.base import ProbeError
 
-__all__ = ["MAX_REDIRECTS", "fetch", "same_origin"]
+__all__ = ["MAX_REDIRECTS", "fetch", "is_internal_host", "same_origin"]
 
 #: Enough for the redirect chains real deployments have (canonical host, trailing
 #: slash, http→https), few enough that a loop ends as an error rather than a hang.
@@ -110,3 +110,35 @@ def fetch(
         current = target
 
     raise ProbeError(f"{url}: more than {MAX_REDIRECTS} redirects — refusing to follow further")
+
+
+def is_internal_host(url: str) -> bool:
+    """Whether a URL points at an address only the runner can reach.
+
+    Loopback, link-local, private and reserved ranges. The one that matters is
+    ``169.254.169.254``: on every major cloud that address answers with instance
+    credentials, and a probed endpoint choosing the URLs markproof fetches is a
+    server-side request forgery with a very good payload.
+
+    Hostnames that are not literal addresses are left alone. Resolving them here
+    would make the verdict depend on DNS at check time, and a resolver that
+    answers differently on two runs is exactly what the determinism claim rules
+    out — the defence for those belongs in the network the runner sits on.
+    """
+    import ipaddress
+
+    host = urlparse(url).hostname
+    if not host:
+        return False
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return (
+        address.is_loopback
+        or address.is_private
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_multicast
+        or address.is_unspecified
+    )

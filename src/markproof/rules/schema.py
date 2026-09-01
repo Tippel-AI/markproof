@@ -212,6 +212,21 @@ class LabelScope(StrEnum):
     ANY_OUTPUT = "any_output"
 
 
+def _bare_data_filename(value: str, field: str) -> str:
+    """A packaged data file is named, not located.
+
+    The loader resolves these against the package's own directory, so anything
+    with a separator or a parent reference would read a file the rulepack author
+    chose rather than one that ships. Rejecting the shape is cheaper and more
+    obvious than sandboxing the read.
+    """
+    if value != Path(value).name or value in ("", ".", ".."):
+        raise ValueError(
+            f"{field} must be a bare filename of a packaged data file, not a path: {value!r}"
+        )
+    return value
+
+
 class Source(BaseModel):
     """One citable source behind a rulepack."""
 
@@ -234,6 +249,13 @@ class DisclosurePatternCheck(BaseModel):
 
     type: Literal["disclosure-pattern"]
     patterns_file: str = Field(min_length=1)
+    """Name of a packaged pattern file. A bare filename, never a path.
+
+    Validated rather than trusted: a rulepack is loaded from a path the operator
+    passes, so its contents are as trusted as that file is, and
+    ``../../../etc/shadow`` in this field would otherwise be opened and its
+    existence reported through the error message.
+    """
     position: Position = Position.ANYWHERE_IN_FIRST_RESPONSE
     min_matches: int = Field(default=1, ge=1)
     prompt_ids: list[str] | None = None
@@ -245,6 +267,11 @@ class DisclosurePatternCheck(BaseModel):
     Naming the prompts makes such a rule expressible — and makes a report say
     which question exposed the problem.
     """
+
+    @field_validator("patterns_file")
+    @classmethod
+    def _bare_filename(cls, v: str) -> str:
+        return _bare_data_filename(v, "patterns_file")
 
     @field_validator("prompt_ids")
     @classmethod
@@ -278,6 +305,11 @@ class LabelPresenceCheck(BaseModel):
     different model. Two names keep a rulepack from silently pointing one check
     at the other's vocabulary.
     """
+
+    @field_validator("labels_file")
+    @classmethod
+    def _bare_filename(cls, v: str) -> str:
+        return _bare_data_filename(v, "labels_file")
 
     category: LabelCategory
     """Which duty this rule is about. Required, with no default: a rule that did

@@ -258,3 +258,31 @@ class TestTheVerdicts:
         result = self._verify("unsigned.html", None)
         assert result.outcome is C2paOutcome.MANIFEST_MISSING
         assert "cannot carry an embedded manifest" in (result.detail or "")
+
+
+class TestTheManifestFetchIsBounded:
+    """The document had a size limit and the manifest did not."""
+
+    @respx.mock
+    def test_an_oversized_manifest_is_refused(self) -> None:
+        respx.get(_URL).mock(
+            return_value=httpx.Response(
+                200,
+                content=_fixture("signed-valid.html"),
+                headers={"content-type": "text/html"},
+            )
+        )
+        respx.get(_MANIFEST_URL).mock(return_value=httpx.Response(200, content=b"x" * 5000))
+        with pytest.raises(ProbeError, match="over max_bytes"):
+            _probe(max_bytes=2048).collect()
+
+    @respx.mock
+    def test_an_empty_manifest_is_not_a_manifest(self) -> None:
+        respx.get(_URL).mock(
+            return_value=httpx.Response(
+                200, content=_fixture("signed-valid.html"), headers={"content-type": "text/html"}
+            )
+        )
+        respx.get(_MANIFEST_URL).mock(return_value=httpx.Response(204))
+        with pytest.raises(ProbeError, match="HTTP 204"):
+            _probe().collect()

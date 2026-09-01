@@ -30,7 +30,7 @@ from markproof.probes.base import (
     Turn,
     sha256_hex,
 )
-from markproof.probes.http import fetch
+from markproof.probes.http import fetch, is_internal_host
 from markproof.rules.schema import ProbeKind
 
 __all__ = ["MediaProbe"]
@@ -178,8 +178,28 @@ class MediaProbe:
             media_type=self.config.expect_media_type or "image/png",
         )
 
+    def _refuse_internal(self, url: str) -> None:
+        """Refuse an asset URL the response body chose that points inward.
+
+        The endpoint under test supplies these URLs, so it decides what markproof
+        fetches. Pointed at 169.254.169.254 that is a request for cloud instance
+        credentials made by a process the operator trusts, from inside their
+        network.
+
+        Allowed when the probe's own target is internal too: pointing markproof at
+        a bot on localhost is the documented way to try it, and refusing the
+        assets that bot serves would break the demo the README sends people to.
+        """
+        if is_internal_host(url) and not is_internal_host(self.config.url):
+            raise ProbeError(
+                f"{self.config.url} returned an asset URL on an internal address ({url}). "
+                "Refusing to fetch it — the endpoint under test does not get to choose "
+                "what this process requests from inside your network."
+            )
+
     def _from_url(self, url: str, index: int, client: httpx.Client) -> Artifact:
         """Fetch an asset the way a browser would."""
+        self._refuse_internal(url)
         try:
             response = client.get(url)
         except httpx.HTTPError as exc:
