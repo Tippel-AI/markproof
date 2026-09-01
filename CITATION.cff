@@ -8,6 +8,11 @@ authors:
     affiliation: Tippel
 repository-code: "https://github.com/Tippel-AI/markproof"
 license: Apache-2.0
+license-url: "https://github.com/Tippel-AI/markproof/blob/main/NOTICE"
+# The code is Apache-2.0; the rulepacks, patterns and prompt sets are CC-BY-4.0,
+# because they derive from CC-BY Commission material. CFF takes one identifier, so
+# it names the code licence and points at NOTICE for the split — citing the
+# rulepacks means honouring the CC-BY attribution, which the reports carry.
 abstract: >-
   markproof calls a running GenAI endpoint the way a user would and checks what
   arrives: whether an interactive system discloses its artificial nature, whether

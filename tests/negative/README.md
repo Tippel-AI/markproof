@@ -10,12 +10,19 @@ fail quietly.
 
 ## Status
 
-Empty. Cases arrive with the milestones that produce them.
+**Not a separate directory of fixtures.** The cases this file once listed as TODO
+all exist, and they live with the code they exercise rather than here:
 
-- TODO(M2): tampered media (byte flips at ten positions), stripped metadata.
-- TODO(M3): `detector: bayesian` without `detector_model:` -> hard config error,
-  never a silent fallback to `mean-g`.
-- TODO(M4): a manipulated `report.json` must fail `markproof verify-report`.
-- TODO(M5): endpoint returns HTML instead of JSON; 401 / 429 / timeout / TLS error
-  -> finding `MPF-X-001`, FAIL rather than a traceback.
-- TODO(M1): rulepack with an unknown `check.type` -> hard config error, not a silent SKIP.
+| Case | Where |
+|---|---|
+| tampered media, stripped metadata | `tests/fixtures/media/` + `tests/test_c2pa_verify.py` |
+| tampered document against its manifest | `tests/fixtures/documents/` + `tests/golden/document-rewritten/` |
+| `detector: bayesian` without a model | `tests/test_synthid.py` |
+| a manipulated `report.json` fails `verify-report` | `tests/test_cli.py::TestVerifyReport` |
+| HTML instead of JSON, 401/429/timeout/TLS | `tests/test_hardening.py` |
+| a rulepack with an unknown `check.type` | `tests/test_engine.py::TestFailureModes` |
+| a credential surviving a cross-origin redirect | `tests/test_redirects.py` |
+
+Kept as a pointer rather than deleted, because "where are the negative tests"
+is a fair question to ask of a compliance tool and the answer should not be
+"grep for it".
