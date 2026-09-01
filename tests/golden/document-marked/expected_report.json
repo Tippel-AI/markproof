@@ -1,16 +1,24 @@
 {
   "findings": [
     {
-      "article": "\u2014",
+      "article": "Art. 50(2)",
       "detail": {
-        "outcome": "probe_error"
+        "assets": [
+          "document-fetch-document"
+        ],
+        "checked": 1,
+        "outcome": "verified"
       },
-      "evidence_sha256": [],
-      "message": "connection refused",
-      "probe_id": "chat",
-      "result": "FAIL",
-      "rule_id": "MPF-X-001",
-      "title": "Probe could not be performed"
+      "evidence_sha256": [
+        "8cc23ef8d1e33877c433382a4793455df5609c8615951526079a4f8e5fbea960"
+      ],
+      "guideline_ref": "Guidelines C(2026) 5054, \u00a74; Code of Practice, Section 1, Commitment 1",
+      "message": "1 asset carries a valid, correctly marked manifest",
+      "obligation": "synthetic-text-marking",
+      "probe_id": "page",
+      "result": "PASS",
+      "rule_id": "MPF-M-002",
+      "title": "A delivered document carries a manifest binding it as AI-generated"
     }
   ],
   "rulepack": {
@@ -28,8 +36,8 @@
   },
   "schema_version": 1,
   "summary": {
-    "failed": 1,
-    "passed": 0,
+    "failed": 0,
+    "passed": 1,
     "skipped": 0,
     "warned": 0
   },

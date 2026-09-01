@@ -90,9 +90,39 @@ class Artifact(BaseModel):
     into the artefacts directory.
     """
 
+    sidecar_manifest: bytes | None = Field(default=None, exclude=True, repr=False)
+    """A C2PA manifest that travels *beside* these bytes rather than inside them.
+
+    Some formats cannot carry an embedded manifest — HTML is the one that matters
+    here — so C2PA binds an external manifest to the document by hashing it, and
+    points at the manifest from a ``<link rel="c2pa-manifest">`` element or an
+    RFC 8288 ``Link:`` response header. The bytes below are then exactly what the
+    server sent, which is the point: the binding covers them, so anything that
+    rewrites them on the way — a minifier, an HTML-transforming CDN — invalidates
+    the provenance claim while the page still renders perfectly.
+
+    Excluded from serialisation for the same reason as ``data``.
+    """
+
+    sidecar_source: str | None = None
+    """How the sidecar manifest was found — ``link-header`` or ``link-element``.
+
+    Kept because the two are not equivalent in practice: a header survives an HTML
+    rewrite that would strip or move the element, so a report saying which one the
+    delivery chain actually used tells an operator something they cannot see from
+    a pass alone.
+    """
+
     @classmethod
     def of(
-        cls, data: bytes, *, artifact_id: str, media_type: str, source_url: str | None = None
+        cls,
+        data: bytes,
+        *,
+        artifact_id: str,
+        media_type: str,
+        source_url: str | None = None,
+        sidecar_manifest: bytes | None = None,
+        sidecar_source: str | None = None,
     ) -> Artifact:
         """Build an artefact from payload bytes, computing size and digest."""
         return cls(
@@ -102,6 +132,8 @@ class Artifact(BaseModel):
             sha256=sha256_hex(data),
             source_url=source_url,
             data=data,
+            sidecar_manifest=sidecar_manifest,
+            sidecar_source=sidecar_source,
         )
 
 

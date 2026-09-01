@@ -33,6 +33,24 @@ explicitly: the **rulepack format** — what a rulepack file may contain — and
 
 ### Added
 
+- **`MPF-M-002` verifies the C2PA manifest bound to a delivered document** (#18),
+  through a new `document` probe. C2PA 2.4 §A.7 binds a manifest to a document
+  that cannot embed one — HTML above all — by hashing the delivered bytes, and the
+  document points at it through an RFC 8288 `Link:` header or a
+  `<link rel="c2pa-manifest">` element.
+
+  This is the delivery-chain regression the project exists for, in the format most
+  likely to suffer it: a minifier, an HTML-rewriting CDN or a template change
+  turns a valid provenance claim into an invalid one while the page still renders
+  perfectly. Nothing errors and no log line appears.
+
+  The probe fetches the bytes the server sent rather than driving a browser — a
+  browser normalises markup, and only the delivered bytes are what the manifest
+  signs. It refuses a manifest on another origin: a provenance claim that depends
+  on a third party being reachable stops being checkable when they are not, and a
+  dangling manifest link is worse than none, because it reads as marked and
+  verifies as nothing.
+
 - **`markproof init`** writes a starting `markproof.yaml`. The CLI's own docstring
   had promised this command since M4 and the build did not have it. The scaffold
   configures one chat probe and leaves media, UI and text marking commented out

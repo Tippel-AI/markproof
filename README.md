@@ -97,6 +97,9 @@ target:
       type: ui
       url: https://example.com/blog/latest
       content_selector: "article .body"   # the model-written text, nothing else
+    - id: article-provenance
+      type: document                      # the delivered bytes, for the C2PA binding
+      url: https://example.com/blog/latest
 applicability:
   deepfake-labelling: false       # this target generates no deep fakes
 text_marking:

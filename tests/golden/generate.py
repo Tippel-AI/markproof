@@ -60,6 +60,33 @@ def _turn(prompt_id: str, response: str, *, user_said: str | None = None) -> dic
     }
 
 
+def _document_turn(prompt_id: str, document: str, manifest: str | None) -> dict[str, Any]:
+    """A fetched document plus the manifest bound to it, if there is one."""
+    import hashlib
+
+    data = (_FIXTURES / document).read_bytes()
+    summary = f"{len(data)} byte(s) of text/html"
+    artifact: dict[str, Any] = {
+        "id": f"{prompt_id}-document",
+        "media_type": "text/html",
+        "size_bytes": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "source_url": "https://pages.example.invalid/index.html",
+        "sidecar_source": "link-header" if manifest else None,
+        "_fixture": document,
+    }
+    if manifest:
+        artifact["_sidecar"] = manifest
+    return {
+        "prompt_id": prompt_id,
+        "request": [],
+        "response": {"role": "assistant", "content": summary},
+        "response_sha256": hashlib.sha256(summary.encode()).hexdigest(),
+        "status_code": 200,
+        "artifacts": [artifact],
+    }
+
+
 def _media_turn(prompt_id: str, fixture: str, media_type: str) -> dict[str, Any]:
     import hashlib
 
@@ -186,6 +213,51 @@ CASES: dict[str, dict[str, Any]] = {
                 "lang": "de",
                 "turns": [
                     _media_turn("media-generation", "media/signed-wrong-type.png", "image/png")
+                ],
+            }
+        ],
+    },
+    "document-marked": {
+        "description": (
+            "An HTML page bound to an external C2PA manifest. The format cannot "
+            "embed one, so the binding is a hash over the delivered bytes."
+        ),
+        "rulepack": "art50-eu-2026.07",
+        "evidences": [
+            {
+                "probe_id": "page",
+                "probe_kind": "document",
+                "target_name": "golden",
+                "lang": "de",
+                "turns": [
+                    _document_turn(
+                        "document-fetch",
+                        "documents/signed-valid.html",
+                        "documents/signed-valid.html.c2pa",
+                    )
+                ],
+            }
+        ],
+    },
+    "document-rewritten": {
+        "description": (
+            "The same manifest, four characters edited afterwards. The page still "
+            "renders perfectly and the provenance claim no longer holds — the "
+            "silent delivery-chain regression this project exists to catch."
+        ),
+        "rulepack": "art50-eu-2026.07",
+        "evidences": [
+            {
+                "probe_id": "page",
+                "probe_kind": "document",
+                "target_name": "golden",
+                "lang": "de",
+                "turns": [
+                    _document_turn(
+                        "document-fetch",
+                        "documents/tampered.html",
+                        "documents/signed-valid.html.c2pa",
+                    )
                 ],
             }
         ],

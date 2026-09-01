@@ -182,6 +182,44 @@ rules:
     severity: fail
 
   # ---------------------------------------------------------------------------
+  # MPF-M-002 — the same marking question as MPF-M-001, asked of a document that
+  # cannot carry a manifest inside it. Added once C2PA 2.4 made the binding a
+  # published convention rather than something markproof would have had to invent.
+  # ---------------------------------------------------------------------------
+  - id: MPF-M-002
+    title: "A delivered document carries a manifest binding it as AI-generated"
+    article: "Art. 50(2)"
+    obligation: synthetic-text-marking
+    guideline_ref: "Guidelines C(2026) 5054, §4; Code of Practice, Section 1, Commitment 1"
+    rationale: >-
+      The marking duty covers text, and text is usually published as a document
+      rather than returned from a chat endpoint. A document that cannot carry an
+      embedded manifest — HTML above all — is bound to an external one instead:
+      C2PA 2.4 Appendix A.7 defines the binding, and the document points at the
+      manifest through an RFC 8288 `Link:` response header or a
+      `<link rel="c2pa-manifest">` element.
+      What makes this worth checking rather than assuming is that the binding is a
+      hash over the bytes the server sent. Anything that rewrites them on the way —
+      a minifier, an HTML-transforming CDN, a template change — turns a valid
+      provenance claim into an invalid one while the page still renders perfectly.
+      Nothing errors, no log line appears, and the operator finds out when somebody
+      from outside asks. That is the failure this project exists to catch, in the
+      format most likely to suffer it.
+      Severity is fail rather than warn because every question here is decidable:
+      either a manifest is bound to these bytes or it is not, either it validates
+      or it does not, and either it declares an AI source type or it declares
+      something else.
+    applies_to: [document]
+    check:
+      type: c2pa-verify
+      accept_source_types:
+        - trainedAlgorithmicMedia
+        - compositeWithTrainedAlgorithmicMedia
+      trust:
+        allow_self_signed: true
+    severity: fail
+
+  # ---------------------------------------------------------------------------
   # MPF-L-001 — the deployer-side counterpart to MPF-M-001. Article 50(2) asks
   # the provider for a machine-readable mark; Article 50(4) asks the deployer
   # for a label a person can actually see. Para 117 is explicit that the first

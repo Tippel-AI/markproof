@@ -83,11 +83,14 @@ than none:
   about a narrow test, not a defence.
 - **Text marking on a web page is checked in one place only.** For a rendered
   document markproof scores the region named by `content_selector` against the
-  operator's watermark configuration, and nothing else. It does **not** follow
-  the C2PA binding for HTML documents (C2PA Technical Specification 2.4, §A.7,
-  April 2026) or the `c2pa.ai-disclosure` assertion (§18.28). Those exist and are
-  checkable; markproof has not implemented them yet. A green run on a web page
-  therefore says the watermark survived, not that the document is marked.
+  operator's watermark configuration, and nothing else — a `ui` probe reports what
+  a browser rendered, which is not the bytes a C2PA manifest signs.
+- **Document provenance is a separate probe.** `MPF-M-002` verifies the C2PA
+  binding for a delivered document (C2PA Technical Specification 2.4, §A.7) via
+  the `document` probe, which fetches the bytes the server sent and resolves the
+  manifest from a `Link:` header or a `<link rel="c2pa-manifest">` element. It
+  refuses a manifest hosted on another origin: a provenance claim that depends on
+  a third party being reachable stops being checkable when they are not.
 - **Marking is checked, detectability is not.** Article 50(2) requires that
   outputs be marked *and* detectable as artificially generated. markproof
   measures the first limb against your own configuration. Whether a third party
