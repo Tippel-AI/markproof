@@ -236,6 +236,24 @@ def _failure_html(finding: FindingView) -> str:
     )
 
 
+def _marking_note_html(view: ReportView) -> str:
+    """The Article 50(2) qualification, when a marking rule passed.
+
+    The reportlab renderer and the Markdown summary both carry it; this one did
+    not, so the auditor artefact a WeasyPrint user hands over said less than the
+    one a reportlab user hands over. Same wording, from the same constant, because
+    two readers comparing the two documents should find no difference to interpret.
+    """
+    if not view.marking_passed:
+        return ""
+    from markproof.report.pdf_reportlab import MARKING_LIMB_NOTE
+
+    return (
+        '<p class="limb"><strong>Article 50(2) has two limbs.</strong> '
+        f"{_esc(MARKING_LIMB_NOTE)}</p>"
+    )
+
+
 def render_html(report: Any) -> str:
     """Build the HTML document for ``report``.
 
@@ -305,6 +323,7 @@ def render_html(report: Any) -> str:
 <p style="margin-top:6mm"><span style="color:{RESULT_PALETTE[verdict][0]}">
 <b>Overall: {verdict}</b></span> &middot; {_esc(verdict_note)}</p>
 {_counts_html(view)}
+{_marking_note_html(view)}
 <h2>Findings</h2>
 {_findings_html(view)}
 {failure_section}

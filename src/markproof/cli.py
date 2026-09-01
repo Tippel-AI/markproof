@@ -625,8 +625,6 @@ def verify_report_command(
 
 
 _SCAFFOLD = """\
-# SPDX-License-Identifier: Apache-2.0
-#
 # Written by `markproof init`. Point it at the endpoint your users actually
 # reach — a staging copy proves nothing about production.
 version: 1

@@ -5,6 +5,22 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Woher die Regeln kommen — Art. 50(1) AI Act
 
+> **In English, briefly.** This document is the reasoning layer between the legal
+> text and the YAML: for every rule in `art50-eu-2026.07` it records the paragraph
+> it rests on, how the obligation was paraphrased, and — as often — why some
+> obligations deliberately did **not** become rules. It also records where the
+> reading was corrected after the fact, with dates, rather than quietly rewritten.
+>
+> The body is in German because that is the language the sources were read in and
+> the reasoning was done in, and translating it would put a second layer of
+> interpretation between you and the argument. If you want to disagree with a rule,
+> the paragraph numbers are the part that matters and they are language-neutral;
+> [open an issue](https://github.com/Tippel-AI/markproof/issues/new/choose) in
+> whichever language you prefer.
+>
+> **Nothing here is authoritative.** It is one engineer's reading of an ambiguous
+> regulation, written down so it can be argued with instead of taken on trust.
+
 Dieses Dokument hält fest, auf welcher Fundstelle jede Regel im Rulepack
 `art50-eu-2026.07` steht, wie die Pflicht paraphrasiert wurde und warum manche
 Pflichten bewusst *keine* Regel geworden sind. Es ist die Begründungsschicht

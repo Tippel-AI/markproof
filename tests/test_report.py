@@ -315,6 +315,16 @@ class TestTheMarkingLimbIsQualified:
         )
         assert not clean.marking_passed
 
+    def test_the_weasyprint_renderer_carries_it_too(self) -> None:
+        """It did not, so the artefact a WeasyPrint user handed over said less."""
+        from markproof.report.pdf_weasy import render_html
+
+        marked = self._report(Result.PASS, Obligation.SYNTHETIC_MEDIA_MARKING)
+        assert "two limbs" in render_html(marked.model_dump(mode="json", exclude_none=True))
+
+        plain = self._report(Result.PASS, Obligation.AI_INTERACTION)
+        assert "two limbs" not in render_html(plain.model_dump(mode="json", exclude_none=True))
+
     def test_both_renderers_state_the_same_limit(self) -> None:
         """A reader comparing the two artefacts must find no difference to interpret."""
         from markproof.report import pdf_reportlab, summary

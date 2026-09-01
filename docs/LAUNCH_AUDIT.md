@@ -5,6 +5,16 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Launch-Audit — Compliance-Gate vor 0.1.0
 
+> **Superseded, 1 September 2026.** This is the pre-0.1.0 self-audit and it is kept
+> as a record rather than maintained. A second, adversarial audit — eight reviewers,
+> each attacked by an independent skeptic — ran after it and found things this one
+> did not, including a credential leak through redirect handling and a CI job named
+> after a check it did not perform. Where the two disagree, this one is older.
+>
+> Kept rather than deleted because deleting a superseded record is the habit this
+> project argues against everywhere else. Written in German, like
+> `RULES_SOURCES.md`.
+
 **Prüfdatum:** 31.08.2026 · **Stand:** `a6e86cf` (M5) plus uncommittete
 Arbeitskopie von `README.md` · **Prüfer:** Audit-Durchlauf gegen den
 tatsächlichen Repo-Inhalt, nicht gegen die Dokumentation über das Repo.
