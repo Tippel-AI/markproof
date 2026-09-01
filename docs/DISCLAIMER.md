@@ -27,10 +27,16 @@ Consequently:
 
 - no third-party logo appears in this repository, the documentation site, the
   demo GIF or any social asset;
-- no component, package or command of this project is named after a third-party
-  mark (no `synthid-*`, no `c2pa-*`);
-- the project, the distribution and the command are all simply `markproof`,
-  maintained by Tippel.
+- the project, the distribution, the command and the rulepack namespace are all
+  simply `markproof` / `MPF-*`, maintained by Tippel — no third-party mark is used
+  as a product name, a package name or branding;
+- the marks do appear inside the code where they describe what it does: the module
+  `markproof.checks.synthid`, the module `markproof.checks.c2pa_verify`, the
+  optional extra `[synthid]` and the rulepack check type `c2pa-verify`. That is
+  nominative use — naming the technology being verified — and it is deliberate:
+  calling the SynthID check something else would make the code harder to read and
+  the claim harder to check. It is not an endorsement, an affiliation, or a claim
+  to the marks.
 
 ## Not legal advice
 
@@ -73,6 +79,12 @@ than none:
   not part of v1; v1 validates manifest presence, hash bindings and the required
   assertions. Deepfake and emotion labels are checked for presence, not for
   prominence.
+- **Evidence can contain personal data.** Probes record what an endpoint returned,
+  verbatim, and a report records the URLs probed. If a target's response includes
+  personal data — a name in a chat reply, an identifier in an error — it lands in
+  the evidence and, where a report is signed and shared, travels with it. markproof
+  does not inspect, redact or classify what it records. Point it at a test target,
+  or read what you are about to hand over.
 - **Applicability is recorded, not decided.** The `applicability` block in
   `markproof.yaml` is the operator's own statement about which Article 50
   obligations bind the target. markproof writes it into the report and skips the

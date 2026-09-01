@@ -29,7 +29,10 @@
         "failed_assets": [
           "media-generation-0"
         ],
-        "outcome": "wrong_source_type"
+        "outcome": "wrong_source_type",
+        "signers": [
+          "markproof test fixtures"
+        ]
       },
       "evidence_sha256": [
         "8b57d660c94434380203d4448c47daa8eb3096e45db32339e8178c7fa9f48b65"

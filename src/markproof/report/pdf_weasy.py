@@ -39,6 +39,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Final
 
+from markproof.optional import OptionalDependencyError
 from markproof.report.pdf_reportlab import (
     DISCLAIMER,
     RESULT_ORDER,
@@ -56,7 +57,7 @@ __all__ = [
 ]
 
 
-class WeasyPrintUnavailableError(RuntimeError):
+class WeasyPrintUnavailableError(OptionalDependencyError):
     """weasyprint, or one of its system libraries, could not be loaded.
 
     Deliberately distinct from the reportlab error so a caller can tell the two

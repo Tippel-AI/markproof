@@ -7,7 +7,14 @@
           "document-fetch-document"
         ],
         "checked": 1,
-        "outcome": "verified"
+        "outcome": "verified",
+        "sidecar_manifests_sha256": [
+          "61228703b5edc2c4e1831b116d27d189514a8fe6505016f764a8a2b99b51774c"
+        ],
+        "sidecar_source": "link-header",
+        "signers": [
+          "markproof test fixtures"
+        ]
       },
       "evidence_sha256": [
         "8cc23ef8d1e33877c433382a4793455df5609c8615951526079a4f8e5fbea960"

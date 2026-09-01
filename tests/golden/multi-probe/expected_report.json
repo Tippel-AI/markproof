@@ -114,7 +114,10 @@
           "media-generation-0"
         ],
         "checked": 1,
-        "outcome": "verified"
+        "outcome": "verified",
+        "signers": [
+          "markproof test fixtures"
+        ]
       },
       "evidence_sha256": [
         "ac893cb331d2242a3ee3b920e91aa70e9c3d276053d19bd9eb93fdcbd61222b4"

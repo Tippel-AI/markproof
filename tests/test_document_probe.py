@@ -286,3 +286,27 @@ class TestTheManifestFetchIsBounded:
         respx.get(_MANIFEST_URL).mock(return_value=httpx.Response(204))
         with pytest.raises(ProbeError, match="HTTP 204"):
             _probe().collect()
+
+
+class TestInertMarkupIsNotADeclaration:
+    """A `<link>` a browser never acts on must not choose the verdict.
+
+    Taking one from a comment or a script string lets anything that can put text
+    on a page — a code sample, a user-supplied string, a stale commented-out
+    header — point markproof at bytes of its choosing.
+    """
+
+    def test_a_link_in_a_comment_is_ignored(self) -> None:
+        assert (
+            manifest_link_from_html('<!-- <link rel="c2pa-manifest" href="evil.c2pa"> -->') is None
+        )
+
+    def test_a_link_in_a_script_string_is_ignored(self) -> None:
+        body = '<script>var s = \'<link rel="c2pa-manifest" href="evil.c2pa">\';</script>'
+        assert manifest_link_from_html(body) is None
+
+    def test_a_real_link_after_a_comment_is_still_found(self) -> None:
+        assert (
+            manifest_link_from_html('<!-- unrelated --><link rel="c2pa-manifest" href="m.c2pa">')
+            == "m.c2pa"
+        )

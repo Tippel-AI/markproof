@@ -49,6 +49,7 @@ from markproof.config import (
     UiProbeConfig,
     load_config,
 )
+from markproof.optional import OptionalDependencyError
 from markproof.probes.base import Evidence, ProbeError
 from markproof.probes.document import DocumentProbe
 from markproof.probes.http_chat import HttpChatProbe
@@ -487,7 +488,12 @@ def run(
         # deserves a sentence, not a traceback.
         err_console.print(f"[bold red]error:[/] {_plain(exc)}")
         raise typer.Exit(code=2) from exc
-    except (ConfigurationRequiredError, UnsupportedCheckError, KeyError) as exc:
+    except (
+        ConfigurationRequiredError,
+        OptionalDependencyError,
+        UnsupportedCheckError,
+        KeyError,
+    ) as exc:
         # Evaluation used to sit outside this block, so a rulepack asking for a
         # check this build cannot perform — the SynthID extra missing, most
         # commonly — reached the user as a traceback and exit 1. Exit 1 is this

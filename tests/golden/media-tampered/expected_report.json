@@ -26,7 +26,10 @@
         "failed_assets": [
           "media-generation-0"
         ],
-        "outcome": "invalid"
+        "outcome": "invalid",
+        "signers": [
+          "markproof test fixtures"
+        ]
       },
       "evidence_sha256": [
         "80b654dc96d4e96407ef826f0ce7bc247224a9fe9b7ecd823f9a46ff45ba5be0"

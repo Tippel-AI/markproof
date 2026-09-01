@@ -10,7 +10,14 @@
         "failed_assets": [
           "document-fetch-document"
         ],
-        "outcome": "invalid"
+        "outcome": "invalid",
+        "sidecar_manifests_sha256": [
+          "61228703b5edc2c4e1831b116d27d189514a8fe6505016f764a8a2b99b51774c"
+        ],
+        "sidecar_source": "link-header",
+        "signers": [
+          "markproof test fixtures"
+        ]
       },
       "evidence_sha256": [
         "166c7e32179b19ee0a4f41168fa297a6f3673c72e9b1d12173bba98d6e1a11c3"

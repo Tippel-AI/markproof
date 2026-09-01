@@ -86,8 +86,12 @@ SynthID is a trademark of Google LLC / Google DeepMind. C2PA and Content
 Credentials are marks associated with the Coalition for Content Provenance and
 Authenticity and the Content Authenticity Initiative. These names appear here
 descriptively, to state what this tool verifies. No third-party logo is used in
-this repository, its documentation or its marketing assets, and no component of
-this project is named after a third-party mark.
+this repository, its documentation or its marketing assets, and no third-party
+mark is used as a product name, a package name or branding. The marks do appear
+inside the code where they describe what it does -- the modules
+markproof.checks.synthid and markproof.checks.c2pa_verify, the optional extra
+[synthid], the check type c2pa-verify -- which is nominative use and not a claim
+to the marks. See docs/DISCLAIMER.md.
 
 markproof performs technical conformance testing. It is not legal advice.
 See docs/DISCLAIMER.md.
