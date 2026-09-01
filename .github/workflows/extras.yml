@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: 2026 Lukas Friedrich / Tippel
+# SPDX-License-Identifier: Apache-2.0
+#
+# The tests the per-PR run deliberately skips.
+#
+# ci.yml installs no optional extras on purpose: the default path must stay
+# installable with zero system dependencies, and proving that means never
+# installing them there. The cost of that decision is that two whole surfaces —
+# the UI probe and the SynthID detector — execute in no CI environment at all.
+# 28 ui-marked tests and the text-marking matrix were green locally and unrun
+# everywhere else, which is a slower version of a job that runs three echo
+# statements.
+#
+# Nightly rather than per-PR because both are slow: Playwright downloads a browser
+# (several hundred megabytes) and the SynthID tests load a tokenizer. A break here
+# is a break in an optional surface, so a day's latency is the right trade — but
+# zero coverage was not.
+#
+# Pinned action versions match ci.yml; bump them together.
+
+name: extras
+
+on:
+  schedule:
+    # 04:20 UTC. Off the hour, because everyone schedules on the hour and a
+    # queued runner is a slower answer than an unqueued one.
+    - cron: "20 4 * * *"
+  workflow_dispatch:
+  # Also on any change to the code these tests are the only cover for, so a pull
+  # request touching the UI probe or the detector does not wait for the night.
+  pull_request:
+    paths:
+      - "src/markproof/probes/ui.py"
+      - "src/markproof/checks/synthid.py"
+      - "tests/test_ui_probe.py"
+      - "tests/test_synthid.py"
+      - "tests/fixtures/text/**"
+      - ".github/workflows/extras.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extras-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui:
+    name: ui probe (playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install the browser
+        # The pip package ships a driver, not a browser. This is the command that
+        # catches people out, and it is the reason this job is not in ci.yml.
+        run: uv run --extra dev --extra ui playwright install --with-deps chromium
+
+      - name: pytest -m ui
+        run: uv run --extra dev --extra ui pytest -m ui
+
+  synthid:
+    name: text marking (synthid)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Cache the tokenizer
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ hashFiles('tests/fixtures/text/MANIFEST.json') }}
+
+      - name: pytest -m synthid
+        # torch and transformers on a CPU runner: slow, and the reason this is
+        # nightly. The fixtures are committed, so nothing here trains or downloads
+        # a model beyond the tokenizer above.
+        run: uv run --extra dev --extra synthid pytest -m synthid
+
+  guard:
+    name: both markers still select tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: A marker that selects nothing is a job that proves nothing
+        # The failure this file exists to prevent, one level up: renaming a marker
+        # or dropping the last test carrying it would leave two green jobs running
+        # an empty selection. pytest exits 5 on "no tests collected", which is easy
+        # to mistake for success in a workflow that does not look.
+        run: |
+          set -euo pipefail
+          for marker in ui synthid; do
+            count=$(uv run --extra dev pytest -m "${marker}" --collect-only -q 2>/dev/null \
+              | grep -cE '^tests/' || true)
+            echo "${marker}: ${count} tests"
+            if [ "${count}" -lt 5 ]; then
+              echo "::error title=extras::marker '${marker}' selects ${count} tests — the job below it would prove nothing"
+              exit 1
+            fi
+          done
