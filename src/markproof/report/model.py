@@ -186,6 +186,7 @@ def build_report(
     applicability: Applicability | None = None,
     run: RunMetadata | None = None,
     probes: tuple[ProbeRecord, ...] | None = None,
+    data_sha256: str | None = None,
 ) -> Report:
     """Assemble a report from a completed run.
 
@@ -223,6 +224,10 @@ def build_report(
             # header is reproducible by anyone holding a differently-worded pack
             # under the same filename.
             **({"sha256": rulepack.source_sha256} if rulepack.source_sha256 else {}),
+            # The rules are only half of what decides a verdict; the pattern and
+            # label files they point at are the other half, and changing one of
+            # those leaves the rulepack digest untouched.
+            **({"data_sha256": data_sha256} if data_sha256 else {}),
             # The findings quote title, article and guideline_ref verbatim from
             # CC-BY material, so the credit line has to travel with them. A
             # report that carries the text but not the attribution does not

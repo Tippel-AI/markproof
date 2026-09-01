@@ -35,9 +35,14 @@ from typing import Any
 
 import pytest
 
-from markproof.cli import _load_label_sets, _load_pattern_sets, _resolve_rulepack
+from markproof.cli import (
+    _load_label_sets,
+    _load_pattern_sets,
+    _resolve_rulepack,
+    data_digest,
+)
 from markproof.probes.base import Artifact, Evidence
-from markproof.report.model import RunMetadata, build_report
+from markproof.report.model import ProbeRecord, RunMetadata, build_report
 from markproof.report.sign import report_from_dict
 from markproof.rules.engine import combine, evaluate, probe_failure_finding
 from markproof.rules.schema import Applicability, load_rulepack
@@ -102,12 +107,26 @@ def _report_bytes(case: Path) -> str:
         ),
         failures,
     )
+    # Every field the CLI fills, filled here too. A gate that builds a smaller
+    # report than the tool ships is a gate with a blind spot the size of the
+    # difference — `probes` and `data_sha256` were both outside it, and both are
+    # load-bearing parts of what a signed report claims.
+    probes = tuple(
+        ProbeRecord(
+            id=e.probe_id,
+            kind=e.probe_kind.value,
+            url=f"https://golden.invalid/{e.probe_id}",
+        )
+        for e in evidences
+    )
     report = build_report(
         target=spec.get("target", "golden"),
         rulepack=rulepack,
         findings=findings,
         run=RunMetadata(**FROZEN_RUN),
         applicability=applicability,
+        probes=probes or None,
+        data_sha256=data_digest(rulepack),
     )
     # Exactly what the CLI writes, minus the signature — which is deterministic
     # over these bytes anyway, and pinning a key here would test Ed25519 rather

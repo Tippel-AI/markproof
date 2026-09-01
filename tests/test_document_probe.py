@@ -74,6 +74,30 @@ class TestFindingTheManifest:
     def test_a_stylesheet_link_is_not_a_manifest(self) -> None:
         assert manifest_link_from_html('<link rel="stylesheet" href="a.css">') is None
 
+    def test_unquoted_attributes_are_html5_and_must_be_found(self) -> None:
+        """`removeAttributeQuotes` is a default in html-minifier.
+
+        A quoted-only pattern reports a correctly bound page as unmarked, and
+        MPF-M-002 is severity fail — so a compliant deployment goes red and the
+        finding text asserts there was no link element in bytes that contain one.
+        """
+        assert manifest_link_from_html("<link rel=c2pa-manifest href=m.c2pa>") == "m.c2pa"
+        assert manifest_link_from_header("<m.c2pa>; rel=c2pa-manifest") == "m.c2pa"
+
+    def test_single_quotes_too(self) -> None:
+        assert manifest_link_from_html("<link rel='c2pa-manifest' href='m.c2pa'>") == "m.c2pa"
+
+    def test_rel_is_a_list_not_a_string(self) -> None:
+        """RFC 8288 makes `rel` space-separated, so a document may declare both."""
+        assert (
+            manifest_link_from_html('<link href="m.c2pa" rel="preload c2pa-manifest">') == "m.c2pa"
+        )
+        assert manifest_link_from_header('<m.c2pa>; rel="preload c2pa-manifest"') == "m.c2pa"
+
+    def test_a_rel_that_merely_contains_the_name_does_not_count(self) -> None:
+        """`c2pa-manifest-index` is a different relation, not this one."""
+        assert manifest_link_from_html('<link rel="c2pa-manifest-index" href="x">') is None
+
     def test_no_link_at_all(self) -> None:
         assert manifest_link_from_html("<html><body>nothing</body></html>") is None
 

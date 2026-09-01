@@ -595,3 +595,157 @@ class TestScopeProseReadsAsEnglish:
         assert "`synthetic-media-marking` or `synthetic-text-marking` apply" in text, (
             "a list of obligations takes a plural verb"
         )
+
+
+class TestTextMarkingCannotSilentlyPass:
+    """The flagship rule's verdict mapping, which nothing asserted end to end.
+
+    `tests/test_synthid.py` exercises `detect_watermark()` directly and
+    `test_integration.py` asserts one PASS on a watermarked fixture. Between them
+    they left the *mapping* — detector outcome to finding result — unguarded, so
+    an audit found three separate mutations that turn unmarked text into a silent
+    PASS while all 477 tests stay green. MPF-T-001 is the check the README calls
+    the one no other tool performs against a live endpoint.
+
+    The detector is substituted rather than run: what broke was the engine's
+    reading of its answer, and asserting that needs no model, so this runs in
+    every environment rather than only where the optional stack is installed.
+    """
+
+    @staticmethod
+    def _verdict(
+        monkeypatch: pytest.MonkeyPatch,
+        outcome: SynthIdOutcome,
+        *,
+        on_uncertain: str | None = None,
+    ) -> Result:
+        from markproof.checks.synthid import SynthIdResult
+
+        def _canned(text: str, check: object, config: object, **kwargs: object) -> SynthIdResult:
+            return SynthIdResult(outcome=outcome, detector="mean-g", score=0.5, token_count=240)
+
+        monkeypatch.setattr("markproof.rules.engine.detect_watermark", _canned)
+
+        packaged = Path(__file__).resolve().parent.parent / "src" / "markproof"
+        rulepack = load_rulepack(packaged / "rulepacks" / "art50-eu-2026.07.yaml")
+        if on_uncertain is not None:
+            rules = []
+            for rule in rulepack.rules:
+                if rule.id == "MPF-T-001":
+                    check = rule.check.model_copy(update={"on_uncertain": on_uncertain})
+                    rule = rule.model_copy(update={"check": check})
+                rules.append(rule)
+            rulepack = rulepack.model_copy(update={"rules": rules})
+
+        evidence = make_evidence(make_turn("neutral-opener", "Hallo, hier spricht eine KI. " * 20))
+        findings = evaluate(
+            rulepack,
+            [evidence],
+            {
+                "disclosure.de-en.yaml": load_pattern_set(
+                    packaged / "patterns" / "disclosure.de-en.yaml"
+                )
+            },
+            _WATERMARK,
+            {"labels.de-en.yaml": load_label_set(packaged / "patterns" / "labels.de-en.yaml")},
+        )
+        return next(f for f in findings if f.rule_id == "MPF-T-001").result
+
+    def test_unmarked_text_fails(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The whole point of the rule. Nothing asserted this before."""
+        assert self._verdict(monkeypatch, SynthIdOutcome.NOT_WATERMARKED) is Result.FAIL
+
+    def test_marked_text_passes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        assert self._verdict(monkeypatch, SynthIdOutcome.WATERMARKED) is Result.PASS
+
+    def test_an_uncertain_score_fails_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An operator claiming to watermark should produce text that clears the bar."""
+        assert self._verdict(monkeypatch, SynthIdOutcome.UNCERTAIN) is Result.FAIL
+
+    def test_on_uncertain_is_honoured_rather_than_decorative(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        assert (
+            self._verdict(monkeypatch, SynthIdOutcome.UNCERTAIN, on_uncertain="warn") is Result.WARN
+        )
+        assert (
+            self._verdict(monkeypatch, SynthIdOutcome.UNCERTAIN, on_uncertain="skip") is Result.SKIP
+        )
+
+    def test_text_too_short_skips_rather_than_guessing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        assert self._verdict(monkeypatch, SynthIdOutcome.TOO_SHORT) is Result.SKIP
+
+    def test_a_detector_this_build_lacks_warns_rather_than_passing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ "We could not look" must never be reported as "we looked and it was fine"."""
+        assert self._verdict(monkeypatch, SynthIdOutcome.UNSUPPORTED) is Result.WARN
+
+
+class TestADeclaredObligationCannotVanish:
+    """The README's promise held for one route to silence and not the other.
+
+    > declare an obligation applicable and give markproof nothing to check it
+    > with, and you get a warning instead of a silent skip
+
+    True when the probe exists and its configuration is missing. Not true when the
+    probe itself is missing: `_unverified_finding` fires from inside the per-probe
+    loop, so a rule matching no configured probe produced no finding at all. An
+    operator declaring `synthetic-media-marking: true` against a chat-only target
+    got a green run and a report that never mentioned the obligation — the exact
+    "we mark our images / nothing was checked / build is green" the tool exists to
+    remove.
+    """
+
+    @staticmethod
+    def _run(declared: dict[str, bool]) -> dict[str, Finding]:
+        packaged = Path(__file__).resolve().parent.parent / "src" / "markproof"
+        rulepack = load_rulepack(packaged / "rulepacks" / "art50-eu-2026.07.yaml")
+        findings = evaluate(
+            rulepack,
+            [make_evidence(make_turn("neutral-opener", "Hallo! Sie sprechen mit einer KI."))],
+            {
+                "disclosure.de-en.yaml": load_pattern_set(
+                    packaged / "patterns" / "disclosure.de-en.yaml"
+                )
+            },
+            None,
+            {"labels.de-en.yaml": load_label_set(packaged / "patterns" / "labels.de-en.yaml")},
+            Applicability.model_validate(declared),
+        )
+        return {f"{f.rule_id}@{f.probe_id}": f for f in findings}
+
+    def test_a_media_obligation_with_no_media_probe_warns(self) -> None:
+        findings = self._run({"synthetic-media-marking": True})
+        unreachable = [f for f in findings.values() if f.detail.get("outcome") == "unreachable"]
+        assert unreachable, "the declared obligation vanished from the report"
+        assert unreachable[0].result is Result.WARN
+        assert "no probe of kind media is configured" in unreachable[0].message
+
+    def test_the_finding_says_which_probe_kind_would_reach_it(self) -> None:
+        """A warning that does not say what to do is a warning people skip."""
+        findings = self._run({"deepfake-labelling": True})
+        unreachable = [f for f in findings.values() if f.detail.get("outcome") == "unreachable"]
+        assert unreachable
+        assert unreachable[0].detail["needs_probe_kind"] == "media, ui"
+
+    def test_an_obligation_a_probe_does_reach_is_not_double_reported(self) -> None:
+        """A chat probe covers ai-interaction; nothing extra should appear."""
+        findings = self._run({"ai-interaction": True})
+        assert not [f for f in findings.values() if f.detail.get("outcome") == "unreachable"]
+
+    def test_an_undeclared_obligation_stays_silent(self) -> None:
+        """Silence must never become noise: only an explicit claim is answered."""
+        findings = self._run({})
+        assert not [f for f in findings.values() if f.detail.get("outcome") == "unreachable"]
+
+    def test_declaring_it_inapplicable_does_not_warn_either(self) -> None:
+        findings = self._run({"synthetic-media-marking": False})
+        assert not [f for f in findings.values() if f.detail.get("outcome") == "unreachable"]
+
+    def test_it_does_not_set_the_exit_code(self) -> None:
+        """A missing probe needs a human, but it is not a failed check."""
+        findings = self._run({"synthetic-media-marking": True})
+        assert exit_code_for(list(findings.values())) == 0

@@ -66,3 +66,7 @@ watermark_config*.json
 # being copied out of here — the config schema forbids unknown fields, so the
 # file cannot say it in a comment of its own.
 !examples/demo-bot/watermark_config.demo.json
+
+# Reports written by a local run. The tool writes one by default now, so an
+# accidental `markproof run` in the checkout must not become a commit.
+markproof-report/

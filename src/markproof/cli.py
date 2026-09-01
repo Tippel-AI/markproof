@@ -22,6 +22,7 @@ The module-level object ``app`` is the console-script target declared in
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import os
@@ -31,6 +32,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from markproof import __version__
@@ -88,6 +90,24 @@ app.add_typer(rules_app, name="rules")
 console = Console()
 err_console = Console(stderr=True)
 
+
+def _plain(value: object) -> str:
+    """Text that Rich must render literally rather than read as markup.
+
+    Rich treats square brackets as tags, so every install hint this tool prints
+    was silently wrong: ``pip install 'markproof[synthid]'`` reached the user as
+    ``pip install 'markproof'``, which installs the base package and does not fix
+    the problem they hit. The same applies to finding messages in the table — a
+    message mentioning a bracketed term loses it — and to any URL or identifier
+    that comes out of a config file.
+
+    Escaping at the point of printing rather than at the point of writing keeps
+    the messages themselves plain strings, which is what the report renderers and
+    the tests want.
+    """
+    return escape(str(value))
+
+
 #: Packaged rulepacks and pattern files.
 _RULEPACKS_DIR = Path(__file__).resolve().parent / "rulepacks"
 _PATTERNS_DIR = Path(__file__).resolve().parent / "patterns"
@@ -127,7 +147,18 @@ def _signing_key(report_config: ReportConfig) -> str:
     """
     declared = (report_config.sign_key or "").strip()
     if declared.startswith("env:"):
-        return os.environ.get(declared[4:], "").strip()
+        name = declared[4:]
+        value = os.environ.get(name, "").strip()
+        if not value:
+            # Asking for a signed report and getting an unsigned one with a note
+            # is the wrong answer: the note scrolls past in CI, and what survives
+            # is a file that looks like the artefact the operator asked for and
+            # is not. A configured key that does not resolve stops the run.
+            raise SigningError(
+                f"report.sign_key names {name!r}, which is unset or empty. "
+                "Set it, or remove sign_key to produce an unsigned report deliberately."
+            )
+        return value
     if declared:
         return declared
     return os.environ.get("MARKPROOF_SIGNING_KEY", "").strip()
@@ -190,6 +221,41 @@ def _resolve_rulepack(name: str) -> Path:
     )
 
 
+def data_digest(rulepack: Rulepack) -> str | None:
+    """One digest over every data file the rulepack's verdicts depend on.
+
+    The rulepack digest binds the rules. It does not bind the pattern and label
+    files they point at, and those decide the answers: adding one phrase to
+    ``disclosure.de-en.yaml`` turns a FAIL into a PASS while
+    ``rulepack.sha256`` stays byte-identical. That is a cheaper substitution than
+    the rulepack swap the digest was introduced to defend against, and it was
+    open.
+
+    Combined rather than listed per file so the report gains one field instead of
+    a growing map: a reader compares one value, and any change to any file the
+    rules consult changes it. The filename is hashed alongside the content, so
+    renaming a file is a change too.
+    """
+    referenced = sorted(
+        {
+            name
+            for rule in rulepack.rules
+            for attr in ("patterns_file", "labels_file")
+            if (name := getattr(rule.check, attr, None)) is not None
+        }
+    )
+    if not referenced:
+        return None
+    digest = hashlib.sha256()
+    for name in referenced:
+        path = _PATTERNS_DIR / name
+        if not path.is_file():
+            return None
+        digest.update(name.encode("utf-8"))
+        digest.update(hashlib.sha256(path.read_bytes()).digest())
+    return digest.hexdigest()
+
+
 def _load_pattern_sets(rulepack: Rulepack) -> dict[str, PatternSet]:
     """Load every pattern file the rulepack references, once each."""
     sets: dict[str, PatternSet] = {}
@@ -246,7 +312,9 @@ def _collect(config: MarkproofConfig) -> tuple[list[Evidence], list[Finding]]:
     evidences: list[Evidence] = []
     failures: list[Finding] = []
     for probe_config in config.target.probes:
-        console.print(f"  probing [cyan]{probe_config.id}[/cyan] → {probe_config.url}")
+        console.print(
+            f"  probing [cyan]{_plain(probe_config.id)}[/cyan] → {_plain(probe_config.url)}"
+        )
         try:
             # Explicit per type: an else-branch would quietly treat a probe
             # kind this build does not know as a chat probe.
@@ -261,7 +329,7 @@ def _collect(config: MarkproofConfig) -> tuple[list[Evidence], list[Finding]]:
             else:  # pragma: no cover - the config union makes this unreachable
                 raise ConfigError(f"probe {probe_config.id!r} has a type this build cannot run")
         except ProbeError as exc:
-            console.print(f"    [bold red]unreachable:[/] {exc}")
+            console.print(f"    [bold red]unreachable:[/] {_plain(exc)}")
             failures.append(probe_failure_finding(probe_config.id, str(exc)))
     return evidences, failures
 
@@ -289,6 +357,7 @@ def _write_report(
         timestamp=timestamp,
         applicability=applicability,
         probes=probes,
+        data_sha256=data_digest(rulepack),
     )
 
     key_source = _signing_key(report_config)
@@ -298,7 +367,7 @@ def _write_report(
         except SigningError as exc:
             # Never fall back to writing an unsigned report under a name the
             # caller asked to have signed: that would look like evidence.
-            err_console.print(f"[bold red]signing failed:[/] {exc}")
+            err_console.print(f"[bold red]signing failed:[/] {_plain(exc)}")
             raise typer.Exit(code=2) from exc
 
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -312,15 +381,15 @@ def _write_report(
             + "\n",
             encoding="utf-8",
         )
-        console.print(f"  report written to [cyan]{report_path}[/cyan]")
+        console.print(f"  report written to [cyan]{_plain(report_path)}[/cyan]")
     if "summary" in formats:
         summary_path.write_text(render_summary(report), encoding="utf-8")
-        console.print(f"  summary written to [cyan]{summary_path}[/cyan]")
+        console.print(f"  summary written to [cyan]{_plain(summary_path)}[/cyan]")
     for fmt in ("pdf", "pdf-html"):
         if fmt in formats:
             pdf_path = report_dir / ("report.pdf" if fmt == "pdf" else "report-html.pdf")
             _render_pdf(report, pdf_path, engine=fmt)
-            console.print(f"  {fmt} written to [cyan]{pdf_path}[/cyan]")
+            console.print(f"  {fmt} written to [cyan]{_plain(pdf_path)}[/cyan]")
     if not key_source:
         console.print(
             "  [dim]unsigned — set MARKPROOF_SIGNING_KEY to produce verifiable evidence[/dim]"
@@ -337,10 +406,10 @@ def _render(findings: list[Finding], target_name: str, rulepack: Rulepack) -> No
 
     for finding in findings:
         table.add_row(
-            finding.rule_id,
+            _plain(finding.rule_id),
             f"[{_RESULT_STYLE[finding.result]}]{finding.result.value}[/]",
-            finding.probe_id,
-            finding.message,
+            _plain(finding.probe_id),
+            _plain(finding.message),
         )
 
     console.print()
@@ -386,13 +455,17 @@ def run(
         Path | None,
         typer.Option(
             "--report-dir",
-            help="Write report.json and summary.md here (signed if a key is set).",
+            help="Where to write the report. Defaults to report.output_dir.",
         ),
     ] = None,
     timestamp: Annotated[
         str | None,
         typer.Option("--timestamp", help="Pin the report timestamp (ISO-8601). For tests."),
     ] = None,
+    no_report: Annotated[
+        bool,
+        typer.Option("--no-report", help="Print the findings and write nothing."),
+    ] = False,
 ) -> None:
     """Probe the target and evaluate it against the rulepack."""
     try:
@@ -412,7 +485,7 @@ def run(
         # ValueError covers the watermark config loader, which validates a
         # user-supplied path — a wrong path is a configuration mistake and
         # deserves a sentence, not a traceback.
-        err_console.print(f"[bold red]error:[/] {exc}")
+        err_console.print(f"[bold red]error:[/] {_plain(exc)}")
         raise typer.Exit(code=2) from exc
     except (ConfigurationRequiredError, UnsupportedCheckError, KeyError) as exc:
         # Evaluation used to sit outside this block, so a rulepack asking for a
@@ -421,21 +494,21 @@ def run(
         # tool's word for "a check failed". A pipeline could not tell "your
         # endpoint is not compliant" from "markproof fell over", which is exactly
         # the ambiguity probe_failure_finding() exists to prevent one layer down.
-        err_console.print(f"[bold red]error:[/] {_readable(exc)}")
+        err_console.print(f"[bold red]error:[/] {_plain(_readable(exc))}")
         raise typer.Exit(code=2) from exc
     _render(findings, config.target.name, rulepack)
 
     if json_out is not None:
         payload = [f.model_dump(mode="json") for f in findings]
         json_out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        console.print(f"  findings written to [cyan]{json_out}[/cyan]")
+        console.print(f"  findings written to [cyan]{_plain(json_out)}[/cyan]")
 
-    destination = report_dir if report_dir is not None else None
-    if destination is None and set(config.report.formats) - {"json", "summary"}:
-        # An operator who asked for a PDF in the config meant it; falling through
-        # to "no report at all" because they did not also pass --report-dir would
-        # silently discard the request.
-        destination = Path(config.report.output_dir)
+    # The report is the deliverable, so it is written by default rather than on
+    # request. `markproof init` followed by `markproof run` used to print a table
+    # and produce nothing, which for a tool whose pitch is "hand someone else the
+    # measurement" is the wrong first experience. --no-report is the deliberate
+    # opt-out; --report-dir overrides where it goes.
+    destination = None if no_report else (report_dir or Path(config.report.output_dir))
     if destination is not None:
         # Guarded like the evaluation above, and for the same reason: producing an
         # optional artefact can fail — a missing extra, an unwritable directory —
@@ -456,7 +529,7 @@ def run(
                 config.report,
             )
         except (ConfigError, OSError) as exc:
-            err_console.print(f"[bold red]error:[/] {exc}")
+            err_console.print(f"[bold red]error:[/] {_plain(exc)}")
             raise typer.Exit(code=2) from exc
 
     raise typer.Exit(code=exit_code_for(findings))
@@ -470,7 +543,7 @@ def rules_list(
     try:
         rulepack = load_rulepack(_resolve_rulepack(rulepack_name))
     except (ConfigError, ValueError) as exc:
-        err_console.print(f"[bold red]error:[/] {exc}")
+        err_console.print(f"[bold red]error:[/] {_plain(exc)}")
         raise typer.Exit(code=2) from exc
 
     table = Table(box=None, pad_edge=False, show_edge=False)
@@ -483,12 +556,12 @@ def rules_list(
 
     for rule in sorted(rulepack.rules, key=lambda r: r.id):
         table.add_row(
-            rule.id,
-            rule.article,
-            rule.obligation.value,
+            _plain(rule.id),
+            _plain(rule.article),
+            _plain(rule.obligation.value),
             ", ".join(k.value for k in rule.applies_to),
             rule.severity.value,
-            rule.title,
+            _plain(rule.title),
         )
 
     console.print()
@@ -496,7 +569,7 @@ def rules_list(
     console.print()
     console.print(table)
     console.print()
-    console.print(f"  [dim]{rulepack.attribution.strip()}[/dim]")
+    console.print(f"  [dim]{_plain(rulepack.attribution.strip())}[/dim]")
     console.print()
 
 
@@ -534,7 +607,7 @@ def verify_report_command(
         report = report_from_dict(data)
         public_key = load_public_key(str(key)) if key is not None else None
     except SigningError as exc:
-        err_console.print(f"[bold red]error:[/] {exc}")
+        err_console.print(f"[bold red]error:[/] {_plain(exc)}")
         raise typer.Exit(code=2) from exc
 
     valid, message = verify_report(report, public_key)
@@ -623,7 +696,7 @@ def init(
         raise typer.Exit(code=2) from exc
 
     console.print()
-    console.print(f"  wrote [cyan]{path}[/cyan]")
+    console.print(f"  wrote [cyan]{_plain(path)}[/cyan]")
     console.print()
     console.print("  Next:")
     console.print(f"    1. set the url in {path} to the endpoint your users reach")
@@ -644,8 +717,8 @@ def keygen(
     """Generate an Ed25519 key pair for report signing."""
     private_path, public_path = generate_keypair(out_dir)
     console.print()
-    console.print(f"  private key  [cyan]{private_path}[/cyan]  [dim](mode 600)[/dim]")
-    console.print(f"  public key   [cyan]{public_path}[/cyan]")
+    console.print(f"  private key  [cyan]{_plain(private_path)}[/cyan]  [dim](mode 600)[/dim]")
+    console.print(f"  public key   [cyan]{_plain(public_path)}[/cyan]")
     console.print()
     console.print("  [yellow]Keep the private key out of version control.[/yellow]")
     console.print("  In CI, put its contents in a secret and expose it as")

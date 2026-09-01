@@ -30,6 +30,7 @@ from markproof.probes.base import (
     Turn,
     sha256_hex,
 )
+from markproof.probes.http import fetch
 from markproof.rules.schema import ProbeKind
 
 __all__ = ["MediaProbe"]
@@ -72,9 +73,10 @@ class MediaProbe:
                 status, returns something other than JSON, or returns no asset
                 at all.
         """
-        client = self._client or httpx.Client(
-            timeout=self.config.timeout_seconds, follow_redirects=True
-        )
+        # No follow_redirects here: fetch() follows them and drops the operator's
+        # credential the moment the origin changes. The endpoint under test must
+        # not get to choose where markproof sends a production key.
+        client = self._client or httpx.Client(timeout=self.config.timeout_seconds)
         owns_client = self._client is None
         try:
             turn = self._generate(client)
@@ -93,9 +95,11 @@ class MediaProbe:
     def _generate(self, client: httpx.Client) -> Turn:
         """Ask for media and collect the assets that come back."""
         headers = {"Content-Type": "application/json"}
+        sensitive: set[str] = set()
         if self.config.auth is not None:
             name, value = self.config.auth.resolve()
             headers[name] = value
+            sensitive.add(name)
 
         body: dict[str, Any] = {
             "model": self.config.model,
@@ -107,7 +111,14 @@ class MediaProbe:
             body["size"] = self.config.size
 
         try:
-            response = client.post(self.config.url, json=body, headers=headers)
+            response = fetch(
+                client,
+                "POST",
+                self.config.url,
+                headers=headers,
+                sensitive=frozenset(sensitive),
+                json_body=body,
+            )
         except httpx.HTTPError as exc:
             raise ProbeError(f"{self.config.url} unreachable: {exc}") from exc
 
