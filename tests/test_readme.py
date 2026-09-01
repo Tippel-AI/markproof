@@ -227,30 +227,64 @@ class TestTheFrontPageMatchesReality:
 
     @staticmethod
     def _is_prerelease() -> bool:
-        from markproof import __version__
+        """Read pyproject.toml, not the installed metadata.
 
-        return any(marker in __version__ for marker in ("dev", "a", "b", "rc"))
+        These tests compare two files in the working tree, and the release state
+        is decided by pyproject.toml — ``markproof.__version__`` reports whatever
+        was last installed, which lags a version bump until someone reinstalls.
+        Asking the artefact would make the guard pass or fail depending on the
+        state of a virtualenv rather than on the state of the repository.
+        """
+        import tomllib
 
-    def test_no_pypi_install_before_there_is_a_pypi_release(self) -> None:
-        """`pipx install markproof` must not appear while the version is a pre-release."""
-        if not self._is_prerelease():
-            pytest.skip("released version — the PyPI install line is correct")
-        for command in _commands():
-            assert not re.match(r"^markproof\s*$", command), command
+        pyproject = tomllib.loads((_README.parent / "pyproject.toml").read_text(encoding="utf-8"))
+        version: str = pyproject["project"]["version"]
+        return any(marker in version for marker in ("dev", "a", "b", "rc"))
+
+    def test_the_install_line_matches_the_release_state(self) -> None:
+        """Both directions, because both have been wrong.
+
+        Before the first release the README offered `pipx install markproof`
+        against a PyPI 404. The obvious guard — skip once released — would then go
+        quiet exactly when the opposite mistake becomes possible: shipping a
+        release whose front page still tells people to install from git.
+        """
         text = _readme()
-        assert "pipx install markproof\n" not in text, (
-            "the README offers a PyPI install, but this version is unreleased — "
-            "use `pipx install git+https://github.com/Tippel-AI/markproof`"
-        )
+        offers_pypi = "pipx install markproof\n" in text
+        if self._is_prerelease():
+            assert not offers_pypi, (
+                "the README offers a PyPI install, but this version is a pre-release — "
+                "use `pipx install git+https://github.com/Tippel-AI/markproof`"
+            )
+        else:
+            assert offers_pypi, (
+                "this version is released, but the README still installs from git — "
+                "flip it back to `pipx install markproof`"
+            )
 
-    def test_the_action_is_not_pinned_to_a_tag_that_does_not_exist(self) -> None:
-        if not self._is_prerelease():
-            pytest.skip("released version — a version tag is expected")
+    def test_the_action_reference_matches_the_release_state(self) -> None:
         pinned = re.findall(r"Tippel-AI/markproof/action@(\S+)", _readme())
         assert pinned, "the README no longer shows how to use the action"
         for ref in pinned:
-            assert not re.match(r"^v\d", ref), (
-                f"the action example pins {ref}, but no release tag exists yet — use @main"
+            if self._is_prerelease():
+                assert not re.match(r"^v\d", ref), (
+                    f"the action example pins {ref}, but no release tag exists yet — use @main"
+                )
+            else:
+                assert re.match(r"^v\d", ref), (
+                    f"this version is released, but the action example points at {ref} — "
+                    "pin the tag so a copied snippet is reproducible"
+                )
+
+    def test_the_status_callout_matches_the_release_state(self) -> None:
+        """The paragraph a careful reader treats as the honesty declaration."""
+        text = _readme()
+        says_unreleased = "Status: unreleased" in text
+        if self._is_prerelease():
+            assert says_unreleased, "a pre-release must say so where the reader looks"
+        else:
+            assert not says_unreleased, (
+                "this version is released, but the status callout still says unreleased"
             )
 
     def test_the_readme_links_no_repository_that_does_not_exist(self) -> None:
