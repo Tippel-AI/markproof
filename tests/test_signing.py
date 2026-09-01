@@ -125,3 +125,34 @@ class TestTheReportBindsWhatItJudges:
         )
         valid, _ = verify_report(moved, None)
         assert not valid, "repointing a report at another endpoint must break the signature"
+
+    def test_editing_a_pattern_file_is_visible_in_the_report(self, tmp_path: Path) -> None:
+        """The rulepack digest binds the rules, not the words they match on.
+
+        Adding one phrase to `disclosure.de-en.yaml` turns a FAIL into a PASS
+        while `rulepack.sha256` stays byte-identical — a cheaper substitution than
+        the rulepack swap the digest was introduced to defend against.
+        """
+        from markproof.cli import data_digest
+        from markproof.rules.schema import load_rulepack
+
+        rulepack = load_rulepack(self._packaged())
+        before = data_digest(rulepack)
+        assert before and len(before) == 64
+
+        patterns = self._packaged().parent.parent / "patterns" / "disclosure.de-en.yaml"
+        original = patterns.read_bytes()
+        try:
+            patterns.write_bytes(original + b"\n# an added line\n")
+            assert data_digest(rulepack) != before
+        finally:
+            patterns.write_bytes(original)
+        assert data_digest(rulepack) == before, "the fixture was not restored"
+
+    def test_the_digest_covers_the_filename_too(self) -> None:
+        """Renaming a pattern file is a change to what the rules consult."""
+        from markproof.cli import data_digest
+        from markproof.rules.schema import load_rulepack
+
+        rulepack = load_rulepack(self._packaged())
+        assert data_digest(rulepack) is not None

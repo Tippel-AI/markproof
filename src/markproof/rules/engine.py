@@ -146,6 +146,10 @@ _INCONCLUSIVE = {DisclosureOutcome.NEAR_MISS, DisclosureOutcome.NO_EVIDENCE}
 _C2PA_INCONCLUSIVE = {C2paOutcome.UNREADABLE}
 
 
+#: Probe id used where a finding is about the *configuration* rather than about
+#: something a probe observed. There is no probe: that is the finding.
+NO_PROBE = "(none configured)"
+
 #: Rule id for operational findings — a probe that could not be performed.
 #: Reserved here rather than in a rulepack: it describes the run, not an
 #: obligation, and it must exist even when the rulepack is silent about it.
@@ -234,8 +238,62 @@ def evaluate(
                 )
             )
 
+    findings.extend(_declared_but_unprobed(rulepack, evidences, declaration, findings))
     findings.sort(key=lambda f: (f.rule_id, f.probe_id))
     return findings
+
+
+def _declared_but_unprobed(
+    rulepack: Rulepack,
+    evidences: list[Evidence],
+    declaration: Applicability,
+    produced: list[Finding],
+) -> list[Finding]:
+    """Obligations the target claims, that no configured probe could reach.
+
+    ``_unverified_finding`` only fires from inside the per-probe loop, so a rule
+    whose ``applies_to`` matches no configured probe produced no finding at all —
+    not WARN, not SKIP, not even a name. An operator who declared
+    ``synthetic-media-marking: true`` and configured only a chat probe got a green
+    run and a report that never mentions the obligation.
+
+    That is precisely what the README promises does not happen: "declare an
+    obligation applicable and give markproof nothing to check it with, and you get
+    a warning instead of a silent skip". It held for a missing watermark config and
+    not for a missing probe, which is the same silence arriving by a different
+    route.
+    """
+    covered = {f.obligation for f in produced if f.obligation is not None}
+    available = {e.probe_kind for e in evidences}
+
+    unreachable: list[Finding] = []
+    for rule in sorted(rulepack.rules, key=lambda r: r.id):
+        if not declaration.is_declared_applicable(rule.obligation):
+            continue
+        if rule.obligation in covered:
+            continue
+        if any(kind in available for kind in rule.applies_to):
+            continue
+        kinds = ", ".join(sorted(k.value for k in rule.applies_to))
+        unreachable.append(
+            Finding(
+                rule_id=rule.id,
+                title=rule.title,
+                article=rule.article,
+                obligation=rule.obligation,
+                guideline_ref=rule.guideline_ref,
+                probe_id=NO_PROBE,
+                result=Result.WARN,
+                message=(
+                    f"the target declares a {rule.obligation.value} obligation, but no "
+                    f"probe of kind {kinds} is configured — nothing in this run could "
+                    "check it"
+                ),
+                detail={"outcome": "unreachable", "needs_probe_kind": kinds},
+            )
+        )
+        covered.add(rule.obligation)
+    return unreachable
 
 
 def _out_of_scope_finding(rule: Rule, evidence: Evidence) -> Finding:

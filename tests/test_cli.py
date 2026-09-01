@@ -74,6 +74,17 @@ def _reply(text: str) -> httpx.Response:
     )
 
 
+@pytest.fixture(autouse=True)
+def _no_stray_reports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run every CLI test in its own directory.
+
+    The report is written to `report.output_dir` by default, which is relative —
+    so without this the suite quietly deposits `markproof-report/` in whatever
+    directory pytest happened to start in. It did, once.
+    """
+    monkeypatch.chdir(tmp_path)
+
+
 class TestExitCodes:
     """The contract every adopter's pipeline is written against."""
 
@@ -176,11 +187,39 @@ class TestFailurePathsSpeakInSentences:
 
 class TestReportWriting:
     @respx.mock
-    def test_no_report_is_written_without_report_dir(self, tmp_path: Path) -> None:
-        """What the README used to claim happened, and does not."""
+    def test_the_report_is_written_by_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The report is the deliverable, so it is not opt-in.
+
+        `markproof init` then `markproof run` used to print a table and produce
+        nothing, which for a tool whose pitch is "hand someone else the
+        measurement" is the wrong first experience.
+        """
+        monkeypatch.chdir(tmp_path)
         respx.post(_ENDPOINT).mock(return_value=_reply(_DISCLOSED))
         RUNNER.invoke(app, ["run", "-c", str(_config(tmp_path))])
+        assert (tmp_path / "markproof-report" / "report.json").is_file()
+
+    @respx.mock
+    def test_no_report_writes_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        respx.post(_ENDPOINT).mock(return_value=_reply(_DISCLOSED))
+        result = RUNNER.invoke(app, ["run", "-c", str(_config(tmp_path)), "--no-report"])
+        assert result.exit_code == 0, result.output
         assert not (tmp_path / "markproof-report").exists()
+
+    @respx.mock
+    def test_output_dir_from_the_config_is_honoured(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        respx.post(_ENDPOINT).mock(return_value=_reply(_DISCLOSED))
+        config = _config(tmp_path, extra="report:\n  output_dir: evidence\n")
+        RUNNER.invoke(app, ["run", "-c", str(config)])
+        assert (tmp_path / "evidence" / "report.json").is_file()
 
     @respx.mock
     def test_report_dir_writes_both_files(self, tmp_path: Path) -> None:
@@ -500,3 +539,60 @@ class TestInit:
         assert "demo-bot" in result.output, (
             "a first-time user with no endpoint of their own needs somewhere to point this"
         )
+
+
+class TestTheTerminalPrintsWhatItMeans:
+    """Rich reads square brackets as markup, and every extras hint had them.
+
+    `pip install 'markproof[synthid]'` reached the user as `pip install
+    'markproof'` — a command that installs the base package and does not fix the
+    problem they just hit. The same swallowing applies to any finding message or
+    identifier containing brackets, because table cells are markup too.
+    """
+
+    @respx.mock
+    def test_a_missing_extra_prints_an_install_command_that_works(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from markproof.report import pdf_weasy
+
+        def _unavailable(*_: object, **__: object) -> None:
+            raise pdf_weasy.WeasyPrintUnavailableError("WeasyPrint is not installed.")
+
+        monkeypatch.setattr(pdf_weasy, "render_pdf", _unavailable)
+        respx.post(_ENDPOINT).mock(return_value=_reply(_DISCLOSED))
+        config = _config(tmp_path, extra="report:\n  formats: [pdf-html]\n")
+        result = RUNNER.invoke(
+            app, ["run", "-c", str(config), "--report-dir", str(tmp_path / "out")]
+        )
+        assert "markproof[pdf-html]" in result.output, (
+            f"the extra was swallowed by markup: {result.output!r}"
+        )
+
+    @respx.mock
+    def test_a_finding_message_with_brackets_survives_the_table(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Messages are data. A rulepack author's wording must reach the reader."""
+        from markproof.rules import engine
+
+        real = engine.evaluate
+
+        def _bracketed(*args: object, **kwargs: object) -> list[engine.Finding]:
+            findings = real(*args, **kwargs)  # type: ignore[arg-type]
+            return [
+                f.model_copy(update={"message": "see [section 4] of the guidelines"})
+                for f in findings
+            ]
+
+        monkeypatch.setattr("markproof.cli.evaluate", _bracketed)
+        respx.post(_ENDPOINT).mock(return_value=_reply(_DISCLOSED))
+        result = RUNNER.invoke(app, ["run", "-c", str(_config(tmp_path))])
+        assert "[section 4]" in result.output, result.output
+
+    def test_rules_list_does_not_eat_a_bracketed_title(self) -> None:
+        result = RUNNER.invoke(app, ["rules", "list", "art50-eu-2026.07"])
+        assert result.exit_code == 0
+        # The shipped attribution contains "(EU) 2024/1689" and bracketed clause
+        # references; none of it may vanish.
+        assert "2024/1689" in result.output

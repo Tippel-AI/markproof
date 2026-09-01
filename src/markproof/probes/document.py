@@ -27,7 +27,7 @@ not extend to letting them wander.
 from __future__ import annotations
 
 import re
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 import httpx
 
@@ -41,6 +41,7 @@ from markproof.probes.base import (
     Turn,
     sha256_hex,
 )
+from markproof.probes.http import fetch, same_origin
 from markproof.rules.schema import ProbeKind
 
 __all__ = ["DocumentProbe", "manifest_link_from_header", "manifest_link_from_html"]
@@ -54,13 +55,43 @@ _LINK_HEADER = re.compile(
     r"<(?P<url>[^>]{1,2048})>\s*;(?P<params>[^,]{0,512})",
 )
 
-#: `<link rel="c2pa-manifest" href="...">` in either attribute order.
+#: `<link ...>` with any attribute order.
 _LINK_ELEMENT = re.compile(
     r"<link\b(?P<attrs>[^>]{0,1024})>",
     re.IGNORECASE,
 )
-_HREF = re.compile(r'href\s*=\s*["\']([^"\']{1,2048})["\']', re.IGNORECASE)
-_REL_ATTR = re.compile(r'rel\s*=\s*["\']?([^"\'>\s]{1,64})', re.IGNORECASE)
+
+#: An attribute value, quoted or bare. HTML5 allows `href=index.html.c2pa`, and
+#: html-minifier's `removeAttributeQuotes` produces exactly that — so a quoted-only
+#: pattern reports a correctly bound page as unmarked, which for a severity-fail
+#: rule turns a compliant deployment red.
+_ATTR = (
+    r"{name}\s*=\s*(?:"
+    r'"(?P<dq>[^"]{{0,2048}})"'
+    r"|'(?P<sq>[^']{{0,2048}})'"
+    r"|(?P<bare>[^\s\"'=<>`]{{1,2048}})"
+    r")"
+)
+_HREF = re.compile(_ATTR.format(name=r"\bhref"), re.IGNORECASE)
+_REL_ATTR = re.compile(_ATTR.format(name=r"\brel"), re.IGNORECASE)
+
+
+def _attr_value(match: re.Match[str] | None) -> str | None:
+    """The value out of whichever of the three alternatives matched."""
+    if match is None:
+        return None
+    return match.group("dq") or match.group("sq") or match.group("bare")
+
+
+def _rel_names(value: str) -> set[str]:
+    """The relation tokens in a `rel` value.
+
+    RFC 8288 makes `rel` a space-separated list, so `rel="preload c2pa-manifest"`
+    is legal and means both. Comparing the whole attribute against one name misses
+    every document that also declares another relation — and silently, because a
+    missed manifest is indistinguishable from a document that has none.
+    """
+    return {token.lower() for token in value.split()}
 
 
 def manifest_link_from_header(value: str) -> str | None:
@@ -72,8 +103,8 @@ def manifest_link_from_header(value: str) -> str | None:
     generates pages.
     """
     for match in _LINK_HEADER.finditer(value):
-        params = match.group("params").lower()
-        if re.search(rf'rel\s*=\s*"?{re.escape(_REL)}"?(\s|;|$)', params):
+        rel = _attr_value(_REL_ATTR.search(match.group("params")))
+        if rel is not None and _REL in _rel_names(rel):
             return match.group("url").strip()
     return None
 
@@ -82,12 +113,12 @@ def manifest_link_from_html(body: str) -> str | None:
     """The manifest URL advertised by a ``<link>`` element, if there is one."""
     for element in _LINK_ELEMENT.finditer(body):
         attrs = element.group("attrs")
-        rel = _REL_ATTR.search(attrs)
-        if rel is None or rel.group(1).lower() != _REL:
+        rel = _attr_value(_REL_ATTR.search(attrs))
+        if rel is None or _REL not in _rel_names(rel):
             continue
-        href = _HREF.search(attrs)
-        if href is not None:
-            return href.group(1).strip()
+        href = _attr_value(_HREF.search(attrs))
+        if href:
+            return href.strip()
     return None
 
 
@@ -107,14 +138,26 @@ class DocumentProbe:
                 larger than ``max_bytes``. A document that could not be fetched is
                 an operational finding, never a silent pass.
         """
-        headers = {}
+        headers: dict[str, str] = {}
+        sensitive: set[str] = set()
         if self.config.auth is not None:
             name, value = self.config.auth.resolve()
             headers[name] = value
+            # By name, because AuthConfig.header is configurable and httpx only
+            # strips the literal "Authorization" of its own accord.
+            sensitive.add(name)
 
         try:
-            with httpx.Client(timeout=self.config.timeout_seconds, follow_redirects=True) as client:
-                response = client.get(self.config.url, headers=headers)
+            # follow_redirects stays off at the client: redirects are followed by
+            # fetch(), which drops the credential when the origin changes.
+            with httpx.Client(timeout=self.config.timeout_seconds) as client:
+                response = fetch(
+                    client,
+                    "GET",
+                    self.config.url,
+                    headers=headers,
+                    sensitive=frozenset(sensitive),
+                )
                 body = self._body_of(response)
                 manifest, source = self._manifest_for(client, response, body)
         except ProbeError:
@@ -186,14 +229,18 @@ class DocumentProbe:
             return None, None
 
         url = urljoin(str(response.url), target)
-        if urlparse(url).netloc != urlparse(str(response.url)).netloc:
+        if not same_origin(url, str(response.url)):
             raise ProbeError(
                 f"{self.config.url}: the manifest is hosted on another origin ({url}). "
                 "Refusing to follow it — a provenance claim that depends on a third party "
                 "being reachable stops being checkable when they are not."
             )
         try:
-            manifest = client.get(url)
+            # stay_on_origin, because the check above is worth nothing if a 302
+            # can move the destination afterwards: whoever answers decides the
+            # verdict. Origin is scheme, host and port — an https page whose
+            # manifest arrives over http has left it.
+            manifest = fetch(client, "GET", url, stay_on_origin=True)
         except httpx.HTTPError as exc:
             raise ProbeError(f"{url}: the linked manifest could not be fetched — {exc}") from exc
         if manifest.status_code >= 400:
