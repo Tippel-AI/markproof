@@ -407,6 +407,7 @@ def _finding_from_c2pa(rule: Rule, evidence: Evidence, check: C2paVerifyCheck) -
                 artifact.media_type,
                 check,
                 artifact_id=artifact.id,
+                sidecar_manifest=artifact.sidecar_manifest,
             )
         )
 

@@ -1,0 +1,36 @@
+{
+  "description": "The same manifest, four characters edited afterwards. The page still renders perfectly and the provenance claim no longer holds — the silent delivery-chain regression this project exists to catch.",
+  "evidences": [
+    {
+      "lang": "de",
+      "probe_id": "page",
+      "probe_kind": "document",
+      "target_name": "golden",
+      "turns": [
+        {
+          "artifacts": [
+            {
+              "_fixture": "documents/tampered.html",
+              "_sidecar": "documents/signed-valid.html.c2pa",
+              "id": "document-fetch-document",
+              "media_type": "text/html",
+              "sha256": "166c7e32179b19ee0a4f41168fa297a6f3673c72e9b1d12173bba98d6e1a11c3",
+              "sidecar_source": "link-header",
+              "size_bytes": 257,
+              "source_url": "https://pages.example.invalid/index.html"
+            }
+          ],
+          "prompt_id": "document-fetch",
+          "request": [],
+          "response": {
+            "content": "257 byte(s) of text/html",
+            "role": "assistant"
+          },
+          "response_sha256": "d672e483243ab1440245ba95fd03f26b36a1ad7ec51371407043e0f2407d4371",
+          "status_code": 200
+        }
+      ]
+    }
+  ],
+  "rulepack": "art50-eu-2026.07"
+}

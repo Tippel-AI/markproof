@@ -70,6 +70,16 @@ class ProbeKind(StrEnum):
     UI = "ui"
     MEDIA = "media"
 
+    DOCUMENT = "document"
+    """A document fetched as bytes, for provenance rather than for rendering.
+
+    Distinct from ``ui`` on purpose. A UI probe drives a browser and reports what a
+    person would read; a C2PA binding is a hash over what the *server sent*, and
+    those are not the same bytes — a browser normalises markup, and a rendered
+    document is a projection of the delivered one. Verifying provenance needs the
+    delivered bytes and nothing else, which needs no browser at all.
+    """
+
 
 class Obligation(StrEnum):
     """Which Article 50 duty a rule serves.

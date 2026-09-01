@@ -39,6 +39,7 @@ from markproof.checks.labels import LabelPatternSet, load_label_set
 from markproof.checks.synthid import WatermarkConfig, load_watermark_config
 from markproof.config import (
     ConfigError,
+    DocumentProbeConfig,
     HttpChatProbeConfig,
     MarkproofConfig,
     MediaProbeConfig,
@@ -47,6 +48,7 @@ from markproof.config import (
     load_config,
 )
 from markproof.probes.base import Evidence, ProbeError
+from markproof.probes.document import DocumentProbe
 from markproof.probes.http_chat import HttpChatProbe
 from markproof.probes.media import MediaProbe
 from markproof.probes.ui import UiProbe
@@ -250,6 +252,8 @@ def _collect(config: MarkproofConfig) -> tuple[list[Evidence], list[Finding]]:
             # kind this build does not know as a chat probe.
             if isinstance(probe_config, MediaProbeConfig):
                 evidences.append(MediaProbe(probe_config).collect())
+            elif isinstance(probe_config, DocumentProbeConfig):
+                evidences.append(DocumentProbe(probe_config).collect())
             elif isinstance(probe_config, UiProbeConfig):
                 evidences.append(UiProbe(probe_config).collect())
             elif isinstance(probe_config, HttpChatProbeConfig):

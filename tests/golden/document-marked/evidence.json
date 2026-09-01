@@ -1,0 +1,36 @@
+{
+  "description": "An HTML page bound to an external C2PA manifest. The format cannot embed one, so the binding is a hash over the delivered bytes.",
+  "evidences": [
+    {
+      "lang": "de",
+      "probe_id": "page",
+      "probe_kind": "document",
+      "target_name": "golden",
+      "turns": [
+        {
+          "artifacts": [
+            {
+              "_fixture": "documents/signed-valid.html",
+              "_sidecar": "documents/signed-valid.html.c2pa",
+              "id": "document-fetch-document",
+              "media_type": "text/html",
+              "sha256": "8cc23ef8d1e33877c433382a4793455df5609c8615951526079a4f8e5fbea960",
+              "sidecar_source": "link-header",
+              "size_bytes": 257,
+              "source_url": "https://pages.example.invalid/index.html"
+            }
+          ],
+          "prompt_id": "document-fetch",
+          "request": [],
+          "response": {
+            "content": "257 byte(s) of text/html",
+            "role": "assistant"
+          },
+          "response_sha256": "d672e483243ab1440245ba95fd03f26b36a1ad7ec51371407043e0f2407d4371",
+          "status_code": 200
+        }
+      ]
+    }
+  ],
+  "rulepack": "art50-eu-2026.07"
+}

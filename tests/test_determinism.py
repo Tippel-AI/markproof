@@ -68,8 +68,13 @@ def _evidence_with_bytes(raw: dict[str, Any]) -> Evidence:
         for art in turn.get("artifacts", []):
             art = dict(art)
             fixture = art.pop("_fixture", None)
+            sidecar = art.pop("_sidecar", None)
             artifacts.append(
-                Artifact(**art, data=(_FIXTURES / fixture).read_bytes() if fixture else None)
+                Artifact(
+                    **art,
+                    data=(_FIXTURES / fixture).read_bytes() if fixture else None,
+                    sidecar_manifest=(_FIXTURES / sidecar).read_bytes() if sidecar else None,
+                )
             )
         turns.append({**turn, "artifacts": tuple(artifacts)})
     return Evidence.model_validate({**raw, "turns": tuple(turns)})

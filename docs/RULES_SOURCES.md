@@ -859,7 +859,23 @@ Konvention, deren Fehlen hier behauptet wurde — geprüft am 31.08.2026 gegen
 
 Der Satz, der Bestand hat, ist der engere: markproof erfindet keine eigene
 `<meta>`-Konvention. Gegen eine fremde, veröffentlichte zu prüfen, ist dagegen
-genau die Aufgabe. Die Regel dafür ist offen (Issue #18).
+genau die Aufgabe — und seit dem 01.09.2026 tut `MPF-M-002` das.
+
+**Nachtrag zur Werkzeuglage.** Hier stand zunächst, `c2pa-rs` habe keinen
+HTML-Handler und die einzige A.7-Implementierung sei von dritter Seite. Das war zu
+weit gefasst. Richtig ist die engere Aussage: `c2pa-rs` kann ein Manifest **nicht
+in HTML einbetten** — aber es kann eines über HTML-Bytes erzeugen und prüfen,
+sobald es *abgesetzt* geführt wird (`set_no_embed`, und beim Lesen
+`manifest_data`). Genau das ist die A.7-Anordnung, und genau darauf steht
+`MPF-M-002`. Am 01.09.2026 gegen `c2pa-python` 0.37.8 / `c2pa-rs` 0.90.15 geprüft:
+Ein Dokument, das nach dem Signieren um vier Zeichen geändert wurde, meldet
+`assertion.dataHash.mismatch`; das unveränderte meldet ihn nicht.
+
+Die Regel prüft deshalb die **ausgelieferten Bytes** und nicht die gerenderte
+Seite. Ein Browser normalisiert Markup, bevor irgendetwas lesbar ist; die Bindung
+deckt aber, was der Server gesendet hat. Das ist zugleich der Grund, warum die
+Prüfung überhaupt lohnt: Ein Minifier oder ein HTML-umschreibendes CDN zerstört
+die Bindung, während die Seite perfekt aussieht.
 
 Was allgemein *nicht* existiert, ist eine Konvention außerhalb von C2PA: Der
 WHATWG-Vorschlag für ein Meta-Tag (#9479, offen seit dem 02.07.2023) wartet

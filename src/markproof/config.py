@@ -26,6 +26,7 @@ __all__ = [
     "Applicability",
     "AuthConfig",
     "ConfigError",
+    "DocumentProbeConfig",
     "HttpChatProbeConfig",
     "MarkproofConfig",
     "MediaProbeConfig",
@@ -283,10 +284,59 @@ class MediaProbeConfig(BaseModel):
         return v
 
 
+class DocumentProbeConfig(BaseModel):
+    """A document to fetch as bytes and check for provenance.
+
+    Deliberately not the UI probe. A C2PA binding is a hash over what the server
+    sent; a browser normalises markup before anything is readable, so the rendered
+    document and the delivered one are different bytes and only one of them is
+    what the manifest signs. Fetching plainly is both more faithful and cheaper —
+    no browser, no extra.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str = Field(min_length=1)
+    type: Literal["document"]
+    url: str = Field(min_length=1)
+    lang: str = "de"
+    auth: AuthConfig | None = None
+    timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+    prompt_id: str = Field(default="document-fetch", min_length=1)
+
+    max_bytes: int = Field(default=8 * 1024 * 1024, ge=1024)
+    """Refuse to hash a document larger than this.
+
+    A provenance check reads the whole body into memory, so an endpoint that
+    answers with a stream would otherwise decide how much memory this process
+    uses. Eight megabytes is far past any HTML document and far short of a
+    problem.
+    """
+
+    @property
+    def probe_kind(self) -> ProbeKind:
+        return ProbeKind.DOCUMENT
+
+    @field_validator("url")
+    @classmethod
+    def _http_url(cls, v: str) -> str:
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("url must start with http:// or https://")
+        return v
+
+    @field_validator("lang")
+    @classmethod
+    def _supported_lang(cls, v: str) -> str:
+        if v not in SUPPORTED_LANGS:
+            raise ValueError(f"lang {v!r} is not supported (have: {', '.join(SUPPORTED_LANGS)})")
+        return v
+
+
 #: A probe entry in the config. Discriminated on ``type`` so an unknown probe
 #: kind is a loud config error rather than a silently ignored block.
 ProbeConfig = Annotated[
-    HttpChatProbeConfig | UiProbeConfig | MediaProbeConfig, Field(discriminator="type")
+    HttpChatProbeConfig | UiProbeConfig | MediaProbeConfig | DocumentProbeConfig,
+    Field(discriminator="type"),
 ]
 
 

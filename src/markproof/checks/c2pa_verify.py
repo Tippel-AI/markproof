@@ -178,22 +178,53 @@ def verify_media(
     check: C2paVerifyCheck,
     *,
     artifact_id: str,
+    sidecar_manifest: bytes | None = None,
 ) -> C2paResult:
-    """Verify one media payload against a rule's C2PA requirements.
+    """Verify one payload against a rule's C2PA requirements.
 
     Pure with respect to the network: the bytes are already in hand, and remote
     manifests are refused rather than fetched, so the same payload always yields
     the same verdict.
+
+    ``sidecar_manifest`` carries a manifest that travels beside the bytes instead
+    of inside them, which is how C2PA binds provenance to formats that cannot
+    embed one — HTML being the case that matters. The binding is still a hash over
+    the delivered bytes, so it is verified exactly as strictly: a document altered
+    after signing fails with the same ``dataHash`` mismatch an altered JPEG does.
     """
     import c2pa
 
     try:
-        reader = c2pa.Reader(media_type, stream=io.BytesIO(data))
+        reader = c2pa.Reader(media_type, stream=io.BytesIO(data), manifest_data=sidecar_manifest)
     except c2pa.C2paError.ManifestNotFound:
         return C2paResult(
             outcome=C2paOutcome.MANIFEST_MISSING,
             artifact_id=artifact_id,
-            detail="no C2PA manifest embedded in the delivered bytes",
+            detail=(
+                "no C2PA manifest accompanies the delivered bytes"
+                if sidecar_manifest is not None
+                else "no C2PA manifest embedded in the delivered bytes"
+            ),
+        )
+    except c2pa.C2paError.NotSupported:
+        if sidecar_manifest is None:
+            # Not an unreadable payload — a definite absence. The format cannot
+            # carry an embedded manifest at all (HTML is the case that matters),
+            # and none travelled beside it, so there is nowhere a manifest could
+            # be. Saying "unreadable" here would suggest the evidence was at
+            # fault when the finding is about the asset.
+            return C2paResult(
+                outcome=C2paOutcome.MANIFEST_MISSING,
+                artifact_id=artifact_id,
+                detail=(
+                    f"{media_type} cannot carry an embedded manifest and none accompanied "
+                    'it — no Link header and no <link rel="c2pa-manifest"> in the document'
+                ),
+            )
+        return C2paResult(
+            outcome=C2paOutcome.UNREADABLE,
+            artifact_id=artifact_id,
+            detail=f"a manifest was supplied but {media_type} could not be read alongside it",
         )
     except c2pa.C2paError as exc:
         # Includes truncated payloads and formats the SDK cannot parse. Not the
