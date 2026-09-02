@@ -10,17 +10,16 @@ SPDX-License-Identifier: Apache-2.0
 markproof calls your *running* AI endpoint the way a user would, and checks what actually arrives: is the image still carrying its C2PA manifest, is the text still watermarked, does the bot say it's a bot? Deterministic pass/fail, a signed evidence report, and an exit code your pipeline can gate on.
 
 ```bash
-pipx install git+https://github.com/Tippel-AI/markproof
+pipx install markproof
 markproof init                       # writes a starting markproof.yaml
 markproof run --config markproof.yaml
 ```
 
-> **Status: unreleased.** Not on PyPI yet, so install from git as above. Every check
-> in the table below runs against a live endpoint and is covered by tests, but the
-> rulepack format and the report schema will still change before 1.0 — treat a
-> report produced today as evidence about today, not as a stable artefact. The
-> first tagged release, `pipx install markproof`, and a versioned action reference
-> land together ([#1](https://github.com/Tippel-AI/markproof/issues/1)).
+> **Status: 0.1.0, the first release.** Every check in the table below runs against
+> a live endpoint and is covered by tests. The rulepack format and the report
+> schema will still change before 1.0, so pin the version if you need a report to
+> stay reproducible — and treat one produced today as evidence about today rather
+> than as a stable artefact.
 
 ---
 
@@ -169,7 +168,7 @@ markproof verify-report report.json --key public.pem
 ## Use in CI
 
 ```yaml
-- uses: Tippel-AI/markproof/action@main   # a versioned tag follows the first release
+- uses: Tippel-AI/markproof/action@v0.1.0
   with:
     config: markproof.yaml
     extras: synthid        # only if you verify text marking

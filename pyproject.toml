@@ -20,7 +20,7 @@ build-backend = "hatchling.build"
 # ---------------------------------------------------------------------------
 [project]
 name = "markproof"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Deterministic CI checks for EU AI Act Article 50: verify that deployed GenAI endpoints disclose, mark (C2PA / SynthID) and prove it with a signed report."
 readme = "README.md"
 requires-python = ">=3.11"
